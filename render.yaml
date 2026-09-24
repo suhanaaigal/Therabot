@@ -8,8 +8,9 @@ services:
       - key: MONGO_URI
         sync: false
 
-  - type: static
+  - type: web
     name: mental-health-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
