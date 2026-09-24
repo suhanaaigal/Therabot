@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: mental-health-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGO_URI
+        sync: false
+
+  - type: static
+    name: mental-health-frontend
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: mental-health-backend
+          property: host
