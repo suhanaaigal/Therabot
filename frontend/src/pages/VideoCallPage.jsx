@@ -37,6 +37,7 @@ export default function VideoCallPage() {
   const recordingChunksRef = useRef([]);
   const audioContextRef = useRef(null);
   const mixedAudioStreamRef = useRef(null);
+  const reportCompletionRef = useRef(Promise.resolve());
   const [status, setStatus] = useState('Requesting camera and microphone access...');
   const [peerConnected, setPeerConnected] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -220,7 +221,8 @@ export default function VideoCallPage() {
     recorderRef.current.ondataavailable = event => {
       if (event.data.size > 0) recordingChunksRef.current.push(event.data);
     };
-    recorderRef.current.onstop = async () => {
+    reportCompletionRef.current = new Promise(resolve => {
+      recorderRef.current.onstop = async () => {
       const blob = new Blob(recordingChunksRef.current, { type: recorderRef.current.mimeType || 'audio/webm' });
       recordingChunksRef.current = [];
       audioContextRef.current?.close();
@@ -255,7 +257,9 @@ export default function VideoCallPage() {
         setError(`Automatic report failed: ${transcriptionError.message}`);
         setStatus('Call ended. No audio was saved.');
       }
-    };
+        resolve();
+      };
+    });
     recorderRef.current.start();
     setRecording(true);
     socket.emit('call_recording_status', { room: roomId, recording: true });
@@ -267,15 +271,16 @@ export default function VideoCallPage() {
     }
     setRecording(false);
     socket.emit('call_recording_status', { room: roomId, recording: false });
+    return reportCompletionRef.current;
   };
 
   useEffect(() => {
     if (role === 'doctor' && peerConnected && recordingConsent && !recording) startRecording();
   }, [role, peerConnected, recordingConsent, recording]);
 
-  const leaveCall = () => {
+  const leaveCall = async () => {
     if (role === 'doctor') {
-      if (recording) stopRecording();
+      if (recording) await stopRecording();
       socket.emit('call_ended', { room: roomId, endedBy: displayName });
       if (appointmentId) {
         axios.patch(`${backendUrl}/api/appointment/${encodeURIComponent(appointmentId)}/end-call`).catch(() => null);

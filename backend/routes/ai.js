@@ -141,7 +141,7 @@ const generateAiReply = async (userMessage = '', conversation = []) => {
     return `${crisisMessage} Right now, the safest next step is to tell someone you trust or contact a crisis line. Would you like help making a quick safety plan?`;
   }
 
-  const provider = (process.env.AI_PROVIDER || 'ollama').toLowerCase();
+  const provider = (process.env.AI_PROVIDER || 'fallback').toLowerCase();
   const useOllama = provider === 'ollama';
   const apiKey = process.env.OPENAI_API_KEY;
   if (!useOllama && !apiKey) {
@@ -178,6 +178,32 @@ const generateAiReply = async (userMessage = '', conversation = []) => {
   return data.choices?.[0]?.message?.content?.trim() || 'I am here with you. Could you tell me a little more about what you are feeling?';
 };
 
+const generateFallbackClinicalNote = (transcript = [], patientName = 'the patient', doctorName = 'the clinician') => {
+  const messages = (Array.isArray(transcript) ? transcript : [])
+    .map(item => ({
+      author: String(item?.author || 'Speaker'),
+      message: String(item?.message || '').replace(/\s+/g, ' ').trim()
+    }))
+    .filter(item => item.message);
+  const patientMessages = messages.filter(item => /patient/i.test(item.author)).map(item => item.message);
+  const doctorMessages = messages.filter(item => /doctor|clinician/i.test(item.author)).map(item => item.message);
+  const transcriptText = messages.map(item => `${item.author}: ${item.message}`).join(' ');
+  const concernKeywords = ['stress', 'anxiety', 'sleep', 'mood', 'fear', 'panic', 'sad', 'depressed', 'lonely', 'overwhelmed', 'burnout'];
+  const concerns = concernKeywords.filter(keyword => transcriptText.toLowerCase().includes(keyword));
+  const patientSummary = (patientMessages.slice(-2).join(' ') || transcriptText).slice(0, 500);
+  const doctorSummary = (doctorMessages.slice(-2).join(' ') || 'Supportive guidance was discussed during the consultation.').slice(0, 500);
+  const safetyFlag = /suicid|self[- ]harm|kill myself|hurt myself|unsafe/i.test(transcriptText)
+    ? 'Safety concern mentioned in transcript; immediate clinician review is required.'
+    : 'No immediate safety concern was identified in the captured transcript.';
+
+  return [
+    `Subjective\nPatient: ${patientName}. ${patientSummary}`,
+    `Objective\nConsultation transcript captured from the patient-doctor conversation. Report prepared by the system for review by ${doctorName}.`,
+    `Assessment\nReported themes: ${concerns.length ? concerns.join(', ') : 'No specific concern keyword identified'}. ${safetyFlag}`,
+    `Plan\n${doctorSummary} Clinician should verify this draft, complete any missing assessment, and decide follow-up actions.`
+  ].join('\n\n');
+};
+
 const generateClinicalNote = async (transcript = [], patientName = 'the patient', doctorName = 'the clinician') => {
   const transcriptText = (Array.isArray(transcript) ? transcript : [])
     .map(item => `${item.author || 'Speaker'}: ${item.message || ''}`.trim())
@@ -188,11 +214,11 @@ const generateClinicalNote = async (transcript = [], patientName = 'the patient'
     throw new Error('A transcript is required to draft a clinical note.');
   }
 
-  const provider = (process.env.AI_PROVIDER || 'ollama').toLowerCase();
+  const provider = (process.env.AI_PROVIDER || 'fallback').toLowerCase();
   const useOllama = provider === 'ollama';
   const apiKey = process.env.OPENAI_API_KEY;
   if (!useOllama && !apiKey) {
-    throw new Error('The AI provider is not configured. Add an API key or set AI_PROVIDER=ollama.');
+    return { note: generateFallbackClinicalNote(transcript, patientName, doctorName), model: 'local-fallback' };
   }
 
   const baseUrl = (process.env.OPENAI_BASE_URL || (useOllama ? 'http://127.0.0.1:11434/v1' : 'https://api.openai.com/v1')).replace(/\/$/, '');

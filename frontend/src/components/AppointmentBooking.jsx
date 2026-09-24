@@ -71,11 +71,7 @@ export default function AppointmentBooking({ patientName }) {
   const fetchAppointments = async () => {
     try {
       const res = await api.get(`/api/appointment/patient/${patientId}`);
-      setMyAppointments((res.data || []).filter(appointment => {
-        if (!appointment?.scheduledDate) return false;
-        const appointmentDate = new Date(`${appointment.scheduledDate}T${appointment.scheduledTime || '00:00'}`);
-        return !Number.isNaN(appointmentDate.getTime()) && appointmentDate.getTime() >= Date.now() - 60000;
-      }));
+      setMyAppointments((res.data || []).filter(appointment => appointment?.scheduledDate));
     } catch (err) {
       console.error('Error fetching appointments', err);
     }
@@ -204,7 +200,9 @@ export default function AppointmentBooking({ patientName }) {
                 </div>
               ) : app.status === 'Approved' && app.roomUrl ? (
                 <div style={{ marginTop: '8px' }}>
-                  {isAppointmentLive(app.scheduledDate, app.scheduledTime) ? (
+                  {app.callEnded ? (
+                    <div style={{ color: '#64748b', fontSize: '13px' }}>This consultation has ended. The report is available in the doctor&apos;s patient record.</div>
+                  ) : isAppointmentLive(app.scheduledDate, app.scheduledTime) ? (
                     <>
                       <a href={`/call/${encodeURIComponent(app.roomUrl)}?role=patient&name=${encodeURIComponent(patientName || 'Patient')}&patient=${encodeURIComponent(patientName || 'Patient')}&date=${encodeURIComponent(app.scheduledDate)}&time=${encodeURIComponent(app.scheduledTime)}&appointmentId=${encodeURIComponent(app._id)}`} target="_blank" rel="noopener noreferrer" style={{ color: '#0f766e', fontWeight: 'bold', marginRight: '12px' }}>
                         Join In-App Call
@@ -214,7 +212,17 @@ export default function AppointmentBooking({ patientName }) {
                       </a>
                     </>
                   ) : (
-                    <div style={{ color: '#64748b', fontSize: '13px' }}>Join link activates 2 minutes before the appointment.</div>
+                    <div style={{ color: '#64748b', fontSize: '13px' }}>
+                      <a
+                        href={app.roomUrl}
+                        onClick={event => event.preventDefault()}
+                        aria-disabled="true"
+                        style={{ color: '#64748b', fontWeight: '700', cursor: 'not-allowed', marginRight: '8px' }}
+                      >
+                        Join Jitsi
+                      </a>
+                      Link activates 2 minutes before the appointment and remains available for one hour.
+                    </div>
                   )}
                 </div>
               ) : null}
