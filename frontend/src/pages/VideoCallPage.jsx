@@ -3,7 +3,10 @@ import axios from 'axios';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import io from 'socket.io-client';
 
-const backendUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
+const configuredBackendUrl = import.meta.env.VITE_API_URL;
+const backendUrl = configuredBackendUrl && !/^https?:\/\//i.test(configuredBackendUrl)
+  ? `https://${configuredBackendUrl}`
+  : configuredBackendUrl || `${window.location.protocol}//${window.location.hostname}:5000`;
 const socket = io(backendUrl, { autoConnect: true });
 const rtcConfiguration = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]

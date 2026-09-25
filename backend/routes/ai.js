@@ -145,7 +145,10 @@ const generateAiReply = async (userMessage = '', conversation = []) => {
   const useOllama = provider === 'ollama';
   const apiKey = process.env.OPENAI_API_KEY;
   if (!useOllama && !apiKey) {
-    return 'The AI companion is not configured yet. Add an API key or set AI_PROVIDER=ollama to use a local Ollama model.';
+    const match = findDatasetMatch(message);
+    const response = match?.responses?.[0] || 'I am here with you. Tell me what feels most present right now, and we can take it one small step at a time.';
+    const followUp = match?.followUps?.[0] || buildGroundingStep(message);
+    return `${response} ${followUp}`;
   }
 
   const baseUrl = (process.env.OPENAI_BASE_URL || (useOllama ? 'http://127.0.0.1:11434/v1' : 'https://api.openai.com/v1')).replace(/\/$/, '');

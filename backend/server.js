@@ -25,7 +25,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const CallSession = require('./models/CallSession');
 const { demoCallSessions } = require('./demoStore');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const app = express();
 app.use(express.json());
