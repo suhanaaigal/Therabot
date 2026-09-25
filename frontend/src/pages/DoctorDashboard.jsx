@@ -608,9 +608,14 @@ export default function DoctorDashboard() {
                         </div>
                       </div>
                       {isAppointmentLive(appointment.scheduledDate, appointment.scheduledTime, appointment.callEnded) ? (
-                        <a href={`/call/${encodeURIComponent(appointment.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(appointment.patientName || 'Patient')}&date=${encodeURIComponent(appointment.scheduledDate)}&time=${encodeURIComponent(appointment.scheduledTime)}&appointmentId=${encodeURIComponent(appointment._id)}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: 'none', background: '#0f766e' }}>
-                          Open In-App Call
-                        </a>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <a href={`/call/${encodeURIComponent(appointment.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(appointment.patientName || 'Patient')}&date=${encodeURIComponent(appointment.scheduledDate)}&time=${encodeURIComponent(appointment.scheduledTime)}&appointmentId=${encodeURIComponent(appointment._id)}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: 'none', background: '#0f766e' }}>
+                            Open In-App Call
+                          </a>
+                          <a href={appointment.roomUrl} target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: 'none', background: '#2563eb' }}>
+                            Open Jitsi
+                          </a>
+                        </div>
                       ) : <span style={{ color: '#64748b', fontSize: '13px' }}>Link available 2 minutes before</span>}
                     </div>
                   ))}
@@ -727,14 +732,24 @@ export default function DoctorDashboard() {
                         </div>
                       )}
                       {appointment.status === 'Approved' && appointment.roomUrl && (
-                        <a
-                          href={`/call/${encodeURIComponent(appointment.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(appointment.patientName || 'Patient')}&date=${encodeURIComponent(appointment.scheduledDate)}&time=${encodeURIComponent(appointment.scheduledTime)}&appointmentId=${encodeURIComponent(appointment._id)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{ ...buttonStyle, textDecoration: 'none', background: '#0f766e' }}
-                        >
-                          Open In-App Call
-                        </a>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <a
+                            href={`/call/${encodeURIComponent(appointment.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(appointment.patientName || 'Patient')}&date=${encodeURIComponent(appointment.scheduledDate)}&time=${encodeURIComponent(appointment.scheduledTime)}&appointmentId=${encodeURIComponent(appointment._id)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ ...buttonStyle, textDecoration: 'none', background: '#0f766e' }}
+                          >
+                            Open In-App Call
+                          </a>
+                          <a
+                            href={appointment.roomUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ ...buttonStyle, textDecoration: 'none', background: '#2563eb' }}
+                          >
+                            Open Jitsi
+                          </a>
+                        </div>
                       )}
                     </div>
                   ))}
