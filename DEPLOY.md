@@ -34,4 +34,10 @@
 
 - Doctor and patient open the same public frontend URL from different Wi‑Fi networks.
 - The backend must be public and HTTPS.
-- If WebRTC fails behind NAT, add a TURN server later.
+- The in-app call uses Google STUN by default. Some mobile and campus networks also require a TURN relay.
+- To enable a TURN provider, set these variables on the Render frontend service and redeploy the frontend:
+  - `VITE_TURN_URL` (one or more comma-separated `turn:` or `turns:` URLs)
+  - `VITE_TURN_USERNAME`
+  - `VITE_TURN_CREDENTIAL`
+- Use credentials from a TURN provider such as Metered or Twilio Network Traversal. Do not commit TURN credentials to Git.
+- Keep the Jitsi link as a fallback when a network blocks WebRTC or the configured relay is unavailable.

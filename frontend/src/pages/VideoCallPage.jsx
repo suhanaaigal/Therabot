@@ -9,7 +9,14 @@ const backendUrl = configuredBackendUrl && !/^https?:\/\//i.test(configuredBacke
   : configuredBackendUrl || `${window.location.protocol}//${window.location.hostname}:5000`;
 const socket = io(backendUrl, { autoConnect: true });
 const rtcConfiguration = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    ...(import.meta.env.VITE_TURN_URL ? [{
+      urls: import.meta.env.VITE_TURN_URL.split(',').map(url => url.trim()).filter(Boolean),
+      username: import.meta.env.VITE_TURN_USERNAME,
+      credential: import.meta.env.VITE_TURN_CREDENTIAL
+    }] : [])
+  ]
 };
 let whisperPipelinePromise;
 
@@ -43,6 +50,7 @@ export default function VideoCallPage() {
   const reportCompletionRef = useRef(Promise.resolve());
   const [status, setStatus] = useState('Requesting camera and microphone access...');
   const [peerConnected, setPeerConnected] = useState(false);
+  const [remoteAudioReady, setRemoteAudioReady] = useState(false);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -64,7 +72,8 @@ export default function VideoCallPage() {
       const peer = peersRef.current.get(peerId);
       if (peer) peer.close();
       peersRef.current.delete(peerId);
-      setPeerConnected(peersRef.current.size > 0);
+      setPeerConnected([...peersRef.current.values()].some(item => item.connectionState === 'connected'));
+      setRemoteAudioReady(remoteStreamRef.current.getAudioTracks().some(track => track.readyState === 'live'));
       setStatus('The other participant left the call.');
       if (role === 'doctor' && recorderRef.current?.state === 'recording') {
         recorderRef.current.stop();
@@ -78,7 +87,6 @@ export default function VideoCallPage() {
 
       const peer = new RTCPeerConnection(rtcConfiguration);
       peersRef.current.set(peerId, peer);
-      setPeerConnected(true);
 
       localStreamRef.current?.getTracks().forEach(track => peer.addTrack(track, localStreamRef.current));
       peer.ontrack = (event) => {
@@ -87,7 +95,9 @@ export default function VideoCallPage() {
             remoteStreamRef.current.addTrack(track);
           }
         });
+        if (event.track.kind === 'audio') setRemoteAudioReady(true);
         attachRemoteStream();
+        setPeerConnected(true);
         setStatus('Connected to the other participant.');
       };
       peer.onicecandidate = (event) => {
@@ -96,6 +106,10 @@ export default function VideoCallPage() {
         }
       };
       peer.onconnectionstatechange = () => {
+        setPeerConnected([...peersRef.current.values()].some(item => item.connectionState === 'connected'));
+        if (peer.connectionState === 'failed') {
+          setError('The network could not establish a direct video connection. Configure a TURN relay or use Join Jitsi.');
+        }
         if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) removePeer(peerId);
       };
 
@@ -115,7 +129,7 @@ export default function VideoCallPage() {
 
     const onSignal = async ({ from, signal }) => {
       if (!from || !signal) return;
-      const peer = createPeer(from, signal.type === 'offer');
+      const peer = createPeer(from, false);
 
       try {
         if (signal.type === 'offer') {
@@ -159,10 +173,25 @@ export default function VideoCallPage() {
         if (!mounted) return;
         localStreamRef.current = stream;
         localVideoRef.current.srcObject = stream;
+        if (!socket.connected) {
+          socket.connect();
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              socket.off('connect', onConnect);
+              reject(new Error('Could not connect to the call signaling server.'));
+            }, 15000);
+            const onConnect = () => {
+              clearTimeout(timeout);
+              resolve();
+            };
+            socket.once('connect', onConnect);
+          });
+        }
+        if (!mounted) return;
         setStatus('Waiting for the other participant to join...');
         socket.emit('join_call', roomId);
       } catch (mediaError) {
-        setError('Camera and microphone access is required for the in-app call. Check browser permissions and try again.');
+        setError(mediaError.message || 'Camera and microphone access is required for the in-app call. Check browser permissions and try again.');
         setStatus('Media access unavailable.');
       }
     };
@@ -206,6 +235,10 @@ export default function VideoCallPage() {
     }
     if (!localStreamRef.current || !window.MediaRecorder) {
       setError('Recording is not supported by this browser.');
+      return;
+    }
+    if (!remoteStreamRef.current.getAudioTracks().some(track => track.readyState === 'live')) {
+      setStatus('Waiting for the patient audio track before starting report capture...');
       return;
     }
 
@@ -278,15 +311,15 @@ export default function VideoCallPage() {
   };
 
   useEffect(() => {
-    if (role === 'doctor' && peerConnected && recordingConsent && !recording) startRecording();
-  }, [role, peerConnected, recordingConsent, recording]);
+    if (role === 'doctor' && peerConnected && remoteAudioReady && recordingConsent && !recording) startRecording();
+  }, [role, peerConnected, remoteAudioReady, recordingConsent, recording]);
 
   const leaveCall = async () => {
     if (role === 'doctor') {
       if (recording) await stopRecording();
       socket.emit('call_ended', { room: roomId, endedBy: displayName });
       if (appointmentId) {
-        axios.patch(`${backendUrl}/api/appointment/${encodeURIComponent(appointmentId)}/end-call`).catch(() => null);
+        await axios.patch(`${backendUrl}/api/appointment/${encodeURIComponent(appointmentId)}/end-call`).catch(() => null);
       }
     }
     navigate(role === 'doctor' ? '/doctor-dashboard' : '/dashboard');
