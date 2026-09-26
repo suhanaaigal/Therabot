@@ -7,6 +7,7 @@ import PatientDashboard from './pages/PatientDashboard';
 import DoctorAuthPage from './pages/DoctorAuthPage';
 import DoctorDashboard from './pages/DoctorDashboard';
 import VideoCallPage from './pages/VideoCallPage';
+import JitsiConsultationPage from './pages/JitsiConsultationPage';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/doctor" element={<DoctorAuthPage />} />
         <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
         <Route path="/call/:roomId" element={<VideoCallPage />} />
+        <Route path="/jitsi/:roomUrl" element={<JitsiConsultationPage />} />
       </Routes>
     </HashRouter>
   );

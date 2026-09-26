@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import io from 'socket.io-client';
+import { transcribeAudioBlob } from '../utils/transcribeAudio';
 
 const configuredBackendUrl = import.meta.env.VITE_API_URL;
 const backendUrl = configuredBackendUrl && !/^https?:\/\//i.test(configuredBackendUrl)
@@ -18,15 +19,6 @@ const rtcConfiguration = {
     }] : [])
   ]
 };
-let whisperPipelinePromise;
-
-const loadWhisperPipeline = async () => {
-  whisperPipelinePromise ||= new Function('url', 'return import(url)')(
-    'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2'
-  ).then(({ pipeline }) => pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en'));
-  return whisperPipelinePromise;
-};
-
 export default function VideoCallPage() {
   const navigate = useNavigate();
   const { roomId: encodedRoomId } = useParams();
@@ -293,20 +285,7 @@ export default function VideoCallPage() {
       mixedAudioStreamRef.current = null;
       setStatus('Transcribing the consultation locally...');
       try {
-        const decoder = new AudioContext();
-        const decoded = await decoder.decodeAudioData(await blob.arrayBuffer());
-        const monoAudio = decoded.numberOfChannels === 1
-          ? decoded.getChannelData(0)
-          : Float32Array.from({ length: decoded.length }, (_, index) => {
-            let total = 0;
-            for (let channel = 0; channel < decoded.numberOfChannels; channel += 1) total += decoded.getChannelData(channel)[index];
-            return total / decoded.numberOfChannels;
-          });
-        await decoder.close();
-        const transcriber = await loadWhisperPipeline();
-        const result = await transcriber(monoAudio, { sampling_rate: decoded.sampleRate, chunk_length_s: 30, stride_length_s: 5 });
-        const transcriptText = String(result.text || '').trim();
-        if (!transcriptText) throw new Error('No speech was detected in the consultation.');
+        const transcriptText = await transcribeAudioBlob(blob);
         setStatus('Generating the clinical report from the conversation...');
         await axios.post(`${backendUrl}/api/ai/clinical-note`, {
           roomUrl,

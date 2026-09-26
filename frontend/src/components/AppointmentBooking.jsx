@@ -207,19 +207,19 @@ export default function AppointmentBooking({ patientName }) {
                       <a href={`/#/call/${encodeURIComponent(app.roomUrl)}?role=patient&name=${encodeURIComponent(patientName || 'Patient')}&patient=${encodeURIComponent(patientName || 'Patient')}&date=${encodeURIComponent(app.scheduledDate)}&time=${encodeURIComponent(app.scheduledTime)}&appointmentId=${encodeURIComponent(app._id)}`} target="_blank" rel="noopener noreferrer" style={{ color: '#0f766e', fontWeight: 'bold', marginRight: '12px' }}>
                         Join In-App Call
                       </a>
-                      <a href={app.roomUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#007bff', fontWeight: 'bold' }}>
-                        Join Jitsi
+                      <a href={`/#/jitsi/${encodeURIComponent(app.roomUrl)}?role=patient&name=${encodeURIComponent(patientName || 'Patient')}&patient=${encodeURIComponent(patientName || 'Patient')}&date=${encodeURIComponent(app.scheduledDate)}&time=${encodeURIComponent(app.scheduledTime)}&appointmentId=${encodeURIComponent(app._id)}`} target="_blank" rel="noopener noreferrer" style={{ color: '#007bff', fontWeight: 'bold' }}>
+                        Join Jitsi + Auto Report
                       </a>
                     </>
                   ) : (
                     <div style={{ color: '#64748b', fontSize: '13px' }}>
                       <a
-                        href={app.roomUrl}
+                        href={`/#/jitsi/${encodeURIComponent(app.roomUrl)}?role=patient&name=${encodeURIComponent(patientName || 'Patient')}&patient=${encodeURIComponent(patientName || 'Patient')}&date=${encodeURIComponent(app.scheduledDate)}&time=${encodeURIComponent(app.scheduledTime)}&appointmentId=${encodeURIComponent(app._id)}`}
                         onClick={event => event.preventDefault()}
                         aria-disabled="true"
                         style={{ color: '#64748b', fontWeight: '700', cursor: 'not-allowed', marginRight: '8px' }}
                       >
-                        Join Jitsi
+                        Join Jitsi + Auto Report
                       </a>
                       Link activates 2 minutes before the appointment and remains available for one hour.
                     </div>

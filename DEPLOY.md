@@ -34,6 +34,8 @@
 
 - Doctor and patient open the same public frontend URL from different Wi‑Fi networks.
 - The backend must be public and HTTPS.
+- For Jitsi automatic reports, use the app's **Jitsi + Auto Report** link so the Jitsi room is embedded in the app. The doctor must give consent, click **Start report capture**, choose the app tab, and enable **Share tab audio**. The app mixes that tab audio with the doctor's microphone, transcribes it in the browser, then sends only the transcript to the backend for report generation.
+- Jitsi tab-audio capture requires a browser that supports tab audio sharing (desktop Chrome or Edge recommended). If the browser does not provide a shared audio track, transcription cannot run. Do not use this capture flow without all participants' consent.
 - The in-app call uses Google STUN by default. Some mobile and campus networks also require a TURN relay.
 - To enable a TURN provider, set these variables on the Render frontend service and redeploy the frontend:
   - `VITE_TURN_URL` (one or more comma-separated `turn:` or `turns:` URLs)
