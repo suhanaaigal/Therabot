@@ -90,7 +90,7 @@ export default function VideoCallPage() {
 
       localStreamRef.current?.getTracks().forEach(track => peer.addTrack(track, localStreamRef.current));
       peer.ontrack = (event) => {
-        event.streams[0]?.getTracks().forEach(track => {
+        (event.streams[0]?.getTracks() || [event.track]).forEach(track => {
           if (!remoteStreamRef.current.getTracks().some(existing => existing.id === track.id)) {
             remoteStreamRef.current.addTrack(track);
           }
@@ -123,8 +123,12 @@ export default function VideoCallPage() {
       return peer;
     };
 
+    const shouldInitiateOffer = peerId => socket.id < peerId;
     const onPeerJoined = ({ peerId }) => {
-      if (peerId) createPeer(peerId, true);
+      if (peerId) createPeer(peerId, shouldInitiateOffer(peerId));
+    };
+    const onRoomPeers = ({ peerIds = [] } = {}) => {
+      peerIds.forEach(peerId => createPeer(peerId, shouldInitiateOffer(peerId)));
     };
 
     const onSignal = async ({ from, signal }) => {
@@ -201,6 +205,7 @@ export default function VideoCallPage() {
     };
 
     socket.on('call_peer_joined', onPeerJoined);
+    socket.on('call_room_peers', onRoomPeers);
     socket.on('webrtc_signal', onSignal);
     socket.on('call_peer_left', onPeerLeft);
     socket.on('call_recording_status', onRemoteRecording);
@@ -210,6 +215,7 @@ export default function VideoCallPage() {
       mounted = false;
       socket.emit('leave_call', roomId);
       socket.off('call_peer_joined', onPeerJoined);
+      socket.off('call_room_peers', onRoomPeers);
       socket.off('webrtc_signal', onSignal);
       socket.off('call_peer_left', onPeerLeft);
       socket.off('call_recording_status', onRemoteRecording);

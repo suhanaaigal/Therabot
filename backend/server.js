@@ -127,7 +127,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join_call', (room) => {
+    if (!room) return;
+    const participants = [...(io.sockets.adapter.rooms.get(room) || [])]
+      .filter(peerId => peerId !== socket.id);
     socket.join(room);
+    socket.emit('call_room_peers', { peerIds: participants });
     socket.to(room).emit('call_peer_joined', { peerId: socket.id });
   });
 
