@@ -50,6 +50,7 @@ export default function VideoCallPage() {
   const reportCompletionRef = useRef(Promise.resolve());
   const [status, setStatus] = useState('Requesting camera and microphone access...');
   const [peerConnected, setPeerConnected] = useState(false);
+  const [peerDiscovered, setPeerDiscovered] = useState(false);
   const [remoteAudioReady, setRemoteAudioReady] = useState(false);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
@@ -73,6 +74,7 @@ export default function VideoCallPage() {
       if (peer) peer.close();
       peersRef.current.delete(peerId);
       setPeerConnected([...peersRef.current.values()].some(item => item.connectionState === 'connected'));
+      setPeerDiscovered(peersRef.current.size > 0);
       setRemoteAudioReady(remoteStreamRef.current.getAudioTracks().some(track => track.readyState === 'live'));
       setStatus('The other participant left the call.');
       if (role === 'doctor' && recorderRef.current?.state === 'recording') {
@@ -106,11 +108,19 @@ export default function VideoCallPage() {
         }
       };
       peer.onconnectionstatechange = () => {
-        setPeerConnected([...peersRef.current.values()].some(item => item.connectionState === 'connected'));
+        const isConnected = [...peersRef.current.values()].some(item => item.connectionState === 'connected');
+        setPeerConnected(isConnected);
+        if (isConnected) setStatus('Media connection established.');
         if (peer.connectionState === 'failed') {
           setError('The network could not establish a direct video connection. Configure a TURN relay or use Join Jitsi.');
         }
         if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) removePeer(peerId);
+      };
+      peer.oniceconnectionstatechange = () => {
+        if (peer.iceConnectionState === 'failed') {
+          setStatus('Participant found, but the network blocked media connection.');
+          setError('A TURN relay is required on this network. Use Open Jitsi or configure TURN for the in-app call.');
+        }
       };
 
       if (initiator) {
@@ -125,9 +135,16 @@ export default function VideoCallPage() {
 
     const shouldInitiateOffer = peerId => socket.id < peerId;
     const onPeerJoined = ({ peerId }) => {
-      if (peerId) createPeer(peerId, shouldInitiateOffer(peerId));
+      if (!peerId) return;
+      setPeerDiscovered(true);
+      setStatus('Other participant found. Establishing audio/video...');
+      createPeer(peerId, shouldInitiateOffer(peerId));
     };
     const onRoomPeers = ({ peerIds = [] } = {}) => {
+      if (peerIds.length) {
+        setPeerDiscovered(true);
+        setStatus('Other participant found. Establishing audio/video...');
+      }
       peerIds.forEach(peerId => createPeer(peerId, shouldInitiateOffer(peerId)));
     };
 
@@ -345,14 +362,19 @@ export default function VideoCallPage() {
             <h1 style={styles.title}>{role === 'doctor' ? 'Doctor call room' : 'Patient call room'}</h1>
             <p style={styles.subtitle}>Signed in as {displayName}. Use headphones where possible.</p>
           </div>
-          <div style={styles.status}>{peerConnected ? 'Connected' : 'Waiting'}</div>
+          <div style={styles.status}>{peerConnected ? 'Connected' : peerDiscovered ? 'Connecting media' : 'Waiting for participant'}</div>
         </header>
 
         {error && <div style={styles.error}>{error}</div>}
+        {error.includes('TURN relay') && (
+          <a href={roomId} target="_blank" rel="noreferrer" style={styles.fallbackLink}>
+            Continue this consultation in Jitsi
+          </a>
+        )}
         <div style={styles.videoGrid}>
           <div style={styles.videoCard}>
             <video ref={remoteVideoRef} autoPlay playsInline style={styles.video} />
-            {!peerConnected && <div style={styles.videoPlaceholder}>Waiting for the other participant...</div>}
+            {!peerConnected && <div style={styles.videoPlaceholder}>{peerDiscovered ? 'Participant found. Establishing audio/video...' : 'Waiting for the other participant...'}</div>}
             <span style={styles.videoLabel}>Other participant{remoteRecording ? ' | recording started there' : ''}</span>
           </div>
           <div style={styles.videoCard}>
@@ -394,6 +416,7 @@ const styles = {
   subtitle: { margin: 0, color: '#cbd5e1' },
   status: { border: '1px solid #67e8f9', color: '#cffafe', borderRadius: '999px', padding: '8px 14px', fontWeight: 700 },
   error: { background: '#7f1d1d', color: '#fee2e2', padding: '12px 14px', borderRadius: '10px', marginBottom: '14px' },
+  fallbackLink: { display: 'inline-block', marginBottom: '14px', background: '#2563eb', color: '#fff', padding: '10px 14px', borderRadius: '8px', fontWeight: 700, textDecoration: 'none' },
   videoGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' },
   videoCard: { minHeight: '260px', position: 'relative', overflow: 'hidden', background: '#020617', border: '1px solid #334155', borderRadius: '12px' },
   video: { width: '100%', height: '100%', minHeight: '260px', objectFit: 'cover', display: 'block' },
