@@ -309,11 +309,20 @@ router.post('/clinical-note', async (req, res) => {
       model,
       source
     };
+    const savedTranscript = transcript
+      .map(item => ({
+        author: String(item?.author || 'Speaker'),
+        message: String(item?.message || '').replace(/\s+/g, ' ').trim(),
+        time: item?.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }))
+      .filter(item => item.message);
 
     if (mongoose.connection.readyState === 1) {
       const session = await CallSession.findOne({ roomUrl });
       if (!session) return res.status(404).json({ error: 'Session not found' });
       session.clinicalNote = clinicalNote;
+      session.transcript = savedTranscript;
+      session.isRecorded = savedTranscript.length > 0;
       await session.save();
       return res.status(200).json({ message: 'SOAP note drafted successfully', clinicalNote, session });
     }
@@ -321,6 +330,8 @@ router.post('/clinical-note', async (req, res) => {
     const session = demoCallSessions.find(item => String(item.roomUrl) === String(roomUrl));
     if (!session) return res.status(404).json({ error: 'Session not found' });
     session.clinicalNote = clinicalNote;
+    session.transcript = savedTranscript;
+    session.isRecorded = savedTranscript.length > 0;
     return res.status(200).json({ message: 'SOAP note drafted successfully', clinicalNote, session });
   } catch (error) {
     console.error('Clinical note generation failed:', error.message);

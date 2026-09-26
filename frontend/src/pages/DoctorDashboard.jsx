@@ -504,7 +504,7 @@ export default function DoctorDashboard() {
                               </button>
                               {isAppointmentLive(session.scheduledDate, session.scheduledTime, now) ? (
                                 <>
-                                  <a href={`/call/${encodeURIComponent(session.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(session.patientName || 'Patient')}&date=${encodeURIComponent(session.scheduledDate)}&time=${encodeURIComponent(session.scheduledTime)}&appointmentId=${encodeURIComponent(session.appointmentId || '')}`} target="_blank" rel="noreferrer" style={{ color: '#0f766e', fontWeight: '700' }}>Open In-App Call</a>
+                                  <a href={`/#/call/${encodeURIComponent(session.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(session.patientName || 'Patient')}&date=${encodeURIComponent(session.scheduledDate)}&time=${encodeURIComponent(session.scheduledTime)}&appointmentId=${encodeURIComponent(session.appointmentId || '')}`} target="_blank" rel="noreferrer" style={{ color: '#0f766e', fontWeight: '700' }}>Open In-App Call</a>
                                   <a href={session.roomUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: '700' }}>Open Jitsi</a>
                                 </>
                               ) : (
@@ -609,7 +609,7 @@ export default function DoctorDashboard() {
                       </div>
                       {isAppointmentLive(appointment.scheduledDate, appointment.scheduledTime, appointment.callEnded) ? (
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                          <a href={`/call/${encodeURIComponent(appointment.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(appointment.patientName || 'Patient')}&date=${encodeURIComponent(appointment.scheduledDate)}&time=${encodeURIComponent(appointment.scheduledTime)}&appointmentId=${encodeURIComponent(appointment._id)}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: 'none', background: '#0f766e' }}>
+                          <a href={`/#/call/${encodeURIComponent(appointment.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(appointment.patientName || 'Patient')}&date=${encodeURIComponent(appointment.scheduledDate)}&time=${encodeURIComponent(appointment.scheduledTime)}&appointmentId=${encodeURIComponent(appointment._id)}`} target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: 'none', background: '#0f766e' }}>
                             Open In-App Call
                           </a>
                           <a href={appointment.roomUrl} target="_blank" rel="noreferrer" style={{ ...buttonStyle, textDecoration: 'none', background: '#2563eb' }}>
@@ -734,7 +734,7 @@ export default function DoctorDashboard() {
                       {appointment.status === 'Approved' && appointment.roomUrl && (
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                           <a
-                            href={`/call/${encodeURIComponent(appointment.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(appointment.patientName || 'Patient')}&date=${encodeURIComponent(appointment.scheduledDate)}&time=${encodeURIComponent(appointment.scheduledTime)}&appointmentId=${encodeURIComponent(appointment._id)}`}
+                            href={`/#/call/${encodeURIComponent(appointment.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(appointment.patientName || 'Patient')}&date=${encodeURIComponent(appointment.scheduledDate)}&time=${encodeURIComponent(appointment.scheduledTime)}&appointmentId=${encodeURIComponent(appointment._id)}`}
                             target="_blank"
                             rel="noreferrer"
                             style={{ ...buttonStyle, textDecoration: 'none', background: '#0f766e' }}
