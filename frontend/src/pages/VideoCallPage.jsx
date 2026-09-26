@@ -130,6 +130,11 @@ export default function VideoCallPage() {
     const onSignal = async ({ from, signal }) => {
       if (!from || !signal) return;
       const peer = createPeer(from, false);
+      const addPendingCandidates = async () => {
+        const queued = pendingCandidatesRef.current.get(from) || [];
+        for (const candidate of queued) await peer.addIceCandidate(candidate);
+        pendingCandidatesRef.current.delete(from);
+      };
 
       try {
         if (signal.type === 'offer') {
@@ -137,11 +142,10 @@ export default function VideoCallPage() {
           const answer = await peer.createAnswer();
           await peer.setLocalDescription(answer);
           socket.emit('webrtc_signal', { to: from, signal: { type: 'answer', sdp: peer.localDescription } });
-          const queued = pendingCandidatesRef.current.get(from) || [];
-          for (const candidate of queued) await peer.addIceCandidate(candidate);
-          pendingCandidatesRef.current.delete(from);
+          await addPendingCandidates();
         } else if (signal.type === 'answer') {
           await peer.setRemoteDescription(signal.sdp);
+          await addPendingCandidates();
         } else if (signal.type === 'candidate') {
           if (peer.remoteDescription) await peer.addIceCandidate(signal.candidate);
           else pendingCandidatesRef.current.set(from, [...(pendingCandidatesRef.current.get(from) || []), signal.candidate]);
@@ -316,7 +320,8 @@ export default function VideoCallPage() {
 
   const leaveCall = async () => {
     if (role === 'doctor') {
-      if (recording) await stopRecording();
+      if (recorderRef.current?.state === 'recording') stopRecording();
+      await reportCompletionRef.current;
       socket.emit('call_ended', { room: roomId, endedBy: displayName });
       if (appointmentId) {
         await axios.patch(`${backendUrl}/api/appointment/${encodeURIComponent(appointmentId)}/end-call`).catch(() => null);
