@@ -711,7 +711,7 @@ router.get('/sessions', async (req, res) => {
   try {
     if (isDemoMode()) {
       const validSessions = demoCallSessions.filter(
-        session => !isDemoRecord(session.patientName) && isFutureSlot(session.scheduledDate, session.scheduledTime)
+        session => !isDemoRecord(session.patientName)
       );
       return res.status(200).json(validSessions);
     }
@@ -737,7 +737,7 @@ router.get('/sessions', async (req, res) => {
     }
 
     const validSessions = sessions.filter(
-      session => !isDemoRecord(session.patientName) && isFutureSlot(session.scheduledDate, session.scheduledTime)
+      session => !isDemoRecord(session.patientName)
     );
 
     res.status(200).json(validSessions);

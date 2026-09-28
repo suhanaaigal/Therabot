@@ -93,7 +93,13 @@ export default function JitsiConsultationPage() {
         });
         api.addListener('videoConferenceLeft', () => {
           setJoined(false);
-          if (!recording) setStatus('The Jitsi consultation ended.');
+          if (role === 'doctor' && recorderRef.current?.state === 'recording') {
+            setStatus('Jitsi ended. Transcribing the conversation and generating the report...');
+            setBusy(true);
+            recorderRef.current.stop();
+          } else {
+            setStatus('The Jitsi consultation ended.');
+          }
         });
         api.addListener('readyToClose', () => setJoined(false));
       })
