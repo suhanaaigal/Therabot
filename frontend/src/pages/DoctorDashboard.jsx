@@ -405,120 +405,134 @@ export default function DoctorDashboard() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '24px' }}>
-                <div style={infoTile}><strong>Age / Gender:</strong><br />{selectedPatient.age} / {selectedPatient.gender}</div>
-                <div style={infoTile}><strong>Phone:</strong><br />{selectedPatient.phoneNumber}</div>
-                <div style={infoTile}><strong>Emergency Contact:</strong><br />{selectedPatient.emergencyContact}</div>
-                <div style={infoTile}><strong>Current Risk:</strong><br /><span style={{ color: getBandColor(selectedPatient.currentRiskBand), fontWeight: '700' }}>{selectedPatient.currentRiskBand}</span></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', padding: '14px 0', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                <span><strong>{selectedPatient.age || 'Age n/a'}</strong><span style={{ color: '#64748b' }}> · {selectedPatient.gender || 'Gender n/a'}</span></span>
+                <a href={`tel:${selectedPatient.phoneNumber}`} style={{ color: '#0f766e', textDecoration: 'none', fontWeight: 700 }}>{selectedPatient.phoneNumber || 'No phone'}</a>
+                <span style={{ color: '#475569' }}>Emergency: {selectedPatient.emergencyContact || 'Not provided'}</span>
+                <span style={{ marginLeft: 'auto', color: getBandColor(selectedPatient.currentRiskBand), fontWeight: 800 }}>{selectedPatient.currentRiskBand || 'Green'} risk</span>
               </div>
 
-              <div style={{ ...cardStyle, padding: '18px', boxShadow: 'none', border: '1px solid #dbeafe', background: '#f8fbff', marginBottom: '20px' }}>
-                <h4 style={{ marginTop: 0, color: '#12263a' }}>Patient File Summary</h4>
-                <p style={{ margin: '6px 0', color: '#334155' }}>{patientReport?.notes || 'No patient summary available yet.'}</p>
-                {patientReport?.averages && (
-                  <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap', color: '#475569', fontSize: '14px' }}>
-                    <span>Average mood: <strong>{patientReport.averages.mood}</strong></span>
-                    <span>Average anxiety: <strong>{patientReport.averages.anxiety}</strong></span>
-                    <span>Average sleep: <strong>{patientReport.averages.sleep} hrs</strong></span>
-                    <span>Appointments: <strong>{patientReport.appointmentCount ?? patientAppointments.length}</strong></span>
+              <section aria-label="Patient overview" style={{ marginBottom: '28px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                  <h4 style={{ margin: '0 0 12px', color: '#12263a' }}>Clinical snapshot</h4>
+                  <span style={{ color: '#64748b', fontSize: '13px' }}>{patientHistory.length} check-ins · {patientAppointments.length} appointments · {patientCallSessions.length} consultations</span>
+                </div>
+                <p style={{ margin: '0 0 14px', color: '#475569' }}>{patientReport?.notes || 'No summary available until check-in data is recorded.'}</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1px', background: '#dfe7f3', border: '1px solid #dfe7f3' }}>
+                  {[
+                    ['Avg mood', patientReport?.averages?.mood ?? 'N/A', '/10'],
+                    ['Avg anxiety', patientReport?.averages?.anxiety ?? 'N/A', '/10'],
+                    ['Avg sleep', patientReport?.averages?.sleep ?? 'N/A', ' hrs'],
+                    ['Latest band', patientHistory[0]?.calculatedBand || selectedPatient.currentRiskBand || 'Green', '']
+                  ].map(([label, value, suffix]) => (
+                    <div key={label} style={{ padding: '14px 16px', background: '#fff' }}>
+                      <div style={{ color: '#64748b', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
+                      <div style={{ marginTop: '5px', color: label === 'Latest band' ? getBandColor(value) : '#12263a', fontSize: '20px', fontWeight: 800 }}>{value}{suffix}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {(patientAppointments.length > 0 || patientNotifications.length > 0) && (
+                <details style={{ marginBottom: '24px', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', padding: '12px 0' }}>
+                  <summary style={{ cursor: 'pointer', color: '#334155', fontWeight: 700 }}>
+                    Appointment history & alerts ({patientAppointments.length} appointments · {patientNotifications.length} alerts)
+                  </summary>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '24px', paddingTop: '14px' }}>
+                    <section aria-label="Appointment history">
+                      <h5 style={{ margin: '0 0 8px', color: '#334155' }}>Appointments</h5>
+                      {patientAppointments.length === 0 ? <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>No appointments recorded.</p> : patientAppointments.map(appointment => (
+                        <div key={appointment._id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '7px 0', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>
+                          <span>{appointment.scheduledDate} · {appointment.scheduledTime}</span>
+                          <span style={{ color: '#475569' }}>{appointment.status} · {appointment.urgency || 'Routine'}</span>
+                        </div>
+                      ))}
+                    </section>
+                    <section aria-label="Patient alerts">
+                      <h5 style={{ margin: '0 0 8px', color: '#334155' }}>Alerts</h5>
+                      {patientNotifications.length === 0 ? <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>No alerts recorded.</p> : patientNotifications.slice(0, 5).map(notification => (
+                        <p key={notification._id} style={{ margin: '0 0 7px', paddingLeft: '9px', borderLeft: `3px solid ${notification.severity === 'critical' ? '#dc2626' : notification.severity === 'warning' ? '#d97706' : '#94a3b8'}`, color: '#475569', fontSize: '13px' }}>{notification.message}</p>
+                      ))}
+                    </section>
                   </div>
-                )}
-              </div>
+                </details>
+              )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '20px' }}>
-                <div style={{ ...cardStyle, padding: '18px', boxShadow: 'none', border: '1px solid #edf2f7' }}>
-                  <h4 style={{ marginTop: 0, color: '#12263a' }}>Appointment History</h4>
-                  {patientAppointments.length === 0 ? <p style={{ color: '#64748b' }}>No appointments recorded.</p> : (
-                    <div style={{ display: 'grid', gap: '10px' }}>
-                      {patientAppointments.map(appointment => (
-                        <div key={appointment._id} style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
-                          <strong>{appointment.scheduledDate} at {appointment.scheduledTime}</strong>
-                          <div style={{ color: '#475569', fontSize: '13px', marginTop: '4px' }}>Status: {appointment.status} | Priority: {appointment.urgency || 'Routine'}</div>
-                          {appointment.callEnded && <div style={{ color: '#64748b', fontSize: '13px', marginTop: '4px' }}>Call ended</div>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ ...cardStyle, padding: '18px', boxShadow: 'none', border: '1px solid #edf2f7' }}>
-                  <h4 style={{ marginTop: 0, color: '#12263a' }}>Patient Notifications</h4>
-                  {patientNotifications.length === 0 ? <p style={{ color: '#64748b' }}>No notifications recorded.</p> : (
-                    <div style={{ display: 'grid', gap: '10px' }}>
-                      {patientNotifications.slice(0, 5).map(notification => (
-                        <div key={notification._id} style={{ padding: '9px', borderRadius: '8px', background: notification.severity === 'critical' ? '#fff1f2' : '#f8fafc', color: '#334155', fontSize: '13px' }}>
-                          {notification.message}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ ...cardStyle, padding: '18px', boxShadow: 'none', border: '1px solid #edf2f7' }}>
-                  <h4 style={{ marginTop: 0, color: '#12263a' }}>AI Conversation Summary</h4>
-                  <p style={{ color: '#475569', lineHeight: 1.6, marginBottom: 0 }}>{patientReport?.aiSummary || 'No AI conversation captured yet.'}</p>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                <div style={{ ...cardStyle, padding: '18px', boxShadow: 'none', border: '1px solid #edf2f7' }}>
-                  <h4 style={{ marginTop: 0, color: '#12263a' }}>Daily Reports</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '28px', alignItems: 'start' }}>
+                <section aria-label="Daily check-in history">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', marginBottom: '12px' }}>
+                    <h4 style={{ margin: 0, color: '#12263a' }}>Daily check-ins</h4>
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>Newest first</span>
+                  </div>
                   {patientHistory.length === 0 ? (
-                    <p style={{ color: '#64748b' }}>No daily check-ins recorded yet.</p>
+                    <p style={{ color: '#64748b' }}>No check-ins recorded.</p>
                   ) : (
-                    <div style={{ display: 'grid', gap: '12px' }}>
+                    <div style={{ borderLeft: '2px solid #dbeafe', marginLeft: '5px' }}>
                       {patientHistory.map(chk => (
-                        <div key={chk._id} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', background: '#fbfdff' }}>
+                        <article key={chk._id || chk.date} style={{ position: 'relative', padding: '0 0 20px 18px' }}>
+                          <span style={{ position: 'absolute', left: '-6px', top: '4px', width: '10px', height: '10px', borderRadius: '50%', background: getBandColor(chk.calculatedBand), border: '2px solid #fff' }} />
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                            <strong>{new Date(chk.date).toLocaleDateString()}</strong>
-                            <span style={{ background: getBandColor(chk.calculatedBand), color: '#fff', borderRadius: '999px', padding: '4px 8px', fontSize: '11px', fontWeight: '700' }}>{chk.calculatedBand}</span>
+                            <strong style={{ color: '#12263a' }}>{new Date(chk.date).toLocaleDateString()}</strong>
+                            <span style={{ color: getBandColor(chk.calculatedBand), fontSize: '12px', fontWeight: 800 }}>{chk.calculatedBand}</span>
                           </div>
-                          <div style={{ marginTop: '6px', color: '#475569' }}>Sleep: {chk.sleepHours} hrs | Mood: {chk.moodScore}/10 | Anxiety: {chk.anxietyLevel}/10</div>
-                          <div style={{ marginTop: '6px', color: '#334155' }}>Journal: {chk.journalText || 'No journal entry'}</div>
-                        </div>
+                          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '6px', color: '#475569', fontSize: '13px' }}>
+                            <span>Mood <strong>{chk.moodScore}/10</strong></span>
+                            <span>Anxiety <strong>{chk.anxietyLevel}/10</strong></span>
+                            <span>Sleep <strong>{chk.sleepHours}h</strong></span>
+                          </div>
+                          {chk.journalText && <details style={{ marginTop: '7px', color: '#475569', fontSize: '13px' }}><summary style={{ cursor: 'pointer', fontWeight: 700 }}>Journal note</summary><p style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>{chk.journalText}</p></details>}
+                        </article>
                       ))}
                     </div>
                   )}
-                </div>
+                </section>
 
-                <div style={{ ...cardStyle, padding: '18px', boxShadow: 'none', border: '1px solid #edf2f7' }}>
-                  <h4 style={{ marginTop: 0, color: '#12263a' }}>Consultation Summary</h4>
+                <section aria-label="Consultations and clinical reports">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', marginBottom: '12px' }}>
+                    <h4 style={{ margin: 0, color: '#12263a' }}>Consultations & reports</h4>
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>{patientCallSessions.filter(session => session.clinicalNote?.text).length} reports</span>
+                  </div>
                   {patientCallSessions.length === 0 ? (
-                    <p style={{ color: '#64748b' }}>No consultation sessions saved for this patient yet.</p>
+                    <p style={{ color: '#64748b' }}>No consultation history recorded.</p>
                   ) : (
-                    <div style={{ display: 'grid', gap: '12px' }}>
+                    <div style={{ display: 'grid', gap: '16px' }}>
                       {patientCallSessions.map(session => (
-                        <div key={session._id} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', background: '#fff' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                            <strong>{session.scheduledDate} at {session.scheduledTime}</strong>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedSession(session);
-                                  setTranscriptText((session.transcript || []).map(item => `${item.author || 'Doctor'}: ${item.message || ''}`).join('\n'));
-                                }}
-                                style={{ background: '#eef2ff', color: '#3730a3', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontWeight: 600 }}
-                              >
-                                {selectedSession && selectedSession._id === session._id ? 'Selected' : 'Add Transcript'}
-                              </button>
-                              {isAppointmentLive(session.scheduledDate, session.scheduledTime, now) ? (
-                                <>
-                                  <a href={`/#/call/${encodeURIComponent(session.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(session.patientName || 'Patient')}&date=${encodeURIComponent(session.scheduledDate)}&time=${encodeURIComponent(session.scheduledTime)}&appointmentId=${encodeURIComponent(session.appointmentId || '')}`} target="_blank" rel="noreferrer" style={{ color: '#0f766e', fontWeight: '700' }}>Open In-App Call</a>
-                                  <a href={`/#/jitsi/${encodeURIComponent(session.roomUrl)}?role=doctor&name=${encodeURIComponent(localStorage.getItem('doctorName') || 'Doctor')}&patient=${encodeURIComponent(session.patientName || 'Patient')}&date=${encodeURIComponent(session.scheduledDate)}&time=${encodeURIComponent(session.scheduledTime)}&appointmentId=${encodeURIComponent(session.appointmentId || '')}`} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: '700' }}>Jitsi + Auto Report</a>
-                                </>
-                              ) : (
-                                <span style={{ color: '#64748b', fontSize: '13px' }}>Available at appointment time</span>
-                              )}
+                        <article key={session._id} style={{ padding: '0 0 16px', borderBottom: '1px solid #e2e8f0' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+                            <div>
+                              <strong style={{ color: '#12263a' }}>{session.scheduledDate} · {session.scheduledTime}</strong>
+                              <div style={{ marginTop: '4px', color: '#64748b', fontSize: '12px' }}>{session.transcript?.length ? 'Conversation captured' : 'No transcript captured'} · {session.clinicalNote?.text ? 'Report ready' : 'No report yet'}</div>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedSession(session);
+                                setTranscriptText((session.transcript || []).map(item => `${item.author || 'Doctor'}: ${item.message || ''}`).join('\n'));
+                              }}
+                              style={{ border: '1px solid #cbd5e1', padding: '6px 10px', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              {selectedSession?._id === session._id ? 'Selected' : 'Review session'}
+                            </button>
                           </div>
-                          <div style={{ marginTop: '8px', color: '#334155' }}><strong>Summary:</strong> {session.summary || 'No transcript captured yet.'}</div>
-                          {session.clinicalNote?.text && <div style={{ marginTop: '8px', color: '#334155' }}><strong>SOAP note drafted:</strong> {new Date(session.clinicalNote.generatedAt).toLocaleString()}</div>}
-                        </div>
+                          <p style={{ margin: '10px 0 0', color: '#475569', lineHeight: 1.5, fontSize: '13px' }}>{session.summary || 'Summary will appear after conversation capture.'}</p>
+                          {session.clinicalNote?.text && (
+                            <details style={{ marginTop: '10px' }}>
+                              <summary style={{ color: '#0f766e', fontWeight: 800, cursor: 'pointer' }}>View generated clinical report</summary>
+                              <div style={{ marginTop: '10px', padding: '14px', background: '#f8fafc', borderLeft: '3px solid #0f766e', color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '13px' }}>{session.clinicalNote.text}</div>
+                              <div style={{ marginTop: '6px', color: '#64748b', fontSize: '11px' }}>System-generated draft · Review clinically before use</div>
+                            </details>
+                          )}
+                          {session.transcript?.length > 0 && (
+                            <details style={{ marginTop: '8px' }}>
+                              <summary style={{ color: '#475569', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>View transcript ({session.transcript.length} segment{session.transcript.length === 1 ? '' : 's'})</summary>
+                              <div style={{ marginTop: '6px', color: '#475569', fontSize: '12px', lineHeight: 1.5 }}>{session.transcript.map((item, index) => <p key={`${session._id}-${index}`} style={{ margin: '4px 0' }}><strong>{item.author}:</strong> {item.message}</p>)}</div>
+                            </details>
+                          )}
+                        </article>
                       ))}
                     </div>
                   )}
-                </div>
+                </section>
               </div>
 
               {selectedSession && (
