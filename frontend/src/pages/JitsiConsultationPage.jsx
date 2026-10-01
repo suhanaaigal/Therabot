@@ -169,7 +169,7 @@ export default function JitsiConsultationPage() {
           setStatus('Transcribing the Jitsi conversation in this browser...');
           try {
             const audioBlob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-            const transcript = await transcribeAudioBlob(audioBlob);
+            const transcript = await transcribeAudioBlob(audioBlob, setStatus);
             setStatus('Generating and saving the consultation report...');
             await axios.post(`${backendUrl}/api/ai/clinical-note`, {
               roomUrl,

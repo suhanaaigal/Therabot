@@ -1,13 +1,4 @@
-let whisperPipelinePromise;
-
-const getWhisperPipeline = async () => {
-  whisperPipelinePromise ||= new Function('url', 'return import(url)')(
-    'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2'
-  ).then(({ pipeline }) => pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en'));
-  return whisperPipelinePromise;
-};
-
-export const transcribeAudioBlob = async blob => {
+export const transcribeAudioBlob = async (blob, onProgress = () => {}) => {
   const audioContext = new AudioContext();
   let decoded;
   try {
@@ -26,13 +17,25 @@ export const transcribeAudioBlob = async blob => {
       return total / decoded.numberOfChannels;
     });
 
-  const transcriber = await getWhisperPipeline();
-  const result = await transcriber(monoAudio, {
-    sampling_rate: decoded.sampleRate,
-    chunk_length_s: 30,
-    stride_length_s: 5
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./transcribeAudio.worker.js', import.meta.url), { type: 'module' });
+    worker.onmessage = event => {
+      const { type, message, transcript } = event.data || {};
+      if (type === 'progress') onProgress(message);
+      if (type === 'result') {
+        worker.terminate();
+        if (!transcript) reject(new Error('No speech was detected in the consultation audio.'));
+        else resolve(transcript);
+      }
+      if (type === 'error') {
+        worker.terminate();
+        reject(new Error(message || 'Audio transcription failed.'));
+      }
+    };
+    worker.onerror = event => {
+      worker.terminate();
+      reject(new Error(event.message || 'The transcription worker failed.'));
+    };
+    worker.postMessage({ audio: monoAudio, sampleRate: decoded.sampleRate }, [monoAudio.buffer]);
   });
-  const transcript = String(result.text || '').trim();
-  if (!transcript) throw new Error('No speech was detected in the consultation audio.');
-  return transcript;
 };

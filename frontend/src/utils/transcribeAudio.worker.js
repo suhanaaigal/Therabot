@@ -1,0 +1,54 @@
+let transcriberPromise;
+
+const getTranscriber = async () => {
+  transcriberPromise ||= (async () => {
+    self.postMessage({ type: 'progress', message: 'Loading the local speech recognition model (first run may take a few minutes)...' });
+    const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2');
+    env.backends.onnx.wasm.numThreads = 1;
+    return pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
+      progress_callback: event => {
+        if (event.status === 'progress' && Number.isFinite(event.progress)) {
+          self.postMessage({ type: 'progress', message: `Downloading speech model: ${Math.round(event.progress)}%` });
+        }
+      }
+    });
+  })();
+  return transcriberPromise;
+};
+
+const resampleTo16k = (audio, sampleRate) => {
+  if (sampleRate === 16000) return audio;
+  const outputLength = Math.floor(audio.length * 16000 / sampleRate);
+  const output = new Float32Array(outputLength);
+  const ratio = sampleRate / 16000;
+  for (let index = 0; index < outputLength; index += 1) {
+    const sourceIndex = index * ratio;
+    const left = Math.floor(sourceIndex);
+    const fraction = sourceIndex - left;
+    const right = Math.min(left + 1, audio.length - 1);
+    output[index] = audio[left] * (1 - fraction) + audio[right] * fraction;
+  }
+  return output;
+};
+
+self.onmessage = async event => {
+  try {
+    const { audio, sampleRate } = event.data || {};
+    if (!(audio instanceof Float32Array) || !audio.length || !sampleRate) {
+      throw new Error('The recording did not contain readable audio.');
+    }
+
+    self.postMessage({ type: 'progress', message: 'Preparing audio for transcription...' });
+    const speechAudio = resampleTo16k(audio, sampleRate);
+    self.postMessage({ type: 'progress', message: 'Loading speech recognition and transcribing the conversation...' });
+    const transcriber = await getTranscriber();
+    const result = await transcriber(speechAudio, {
+      sampling_rate: 16000,
+      chunk_length_s: 20,
+      stride_length_s: 3
+    });
+    self.postMessage({ type: 'result', transcript: String(result.text || '').trim() });
+  } catch (error) {
+    self.postMessage({ type: 'error', message: error.message || 'Audio transcription failed.' });
+  }
+};

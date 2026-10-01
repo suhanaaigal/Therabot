@@ -285,7 +285,7 @@ export default function VideoCallPage() {
       mixedAudioStreamRef.current = null;
       setStatus('Transcribing the consultation locally...');
       try {
-        const transcriptText = await transcribeAudioBlob(blob);
+        const transcriptText = await transcribeAudioBlob(blob, setStatus);
         setStatus('Generating the clinical report from the conversation...');
         await axios.post(`${backendUrl}/api/ai/clinical-note`, {
           roomUrl,
