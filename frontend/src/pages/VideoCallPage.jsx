@@ -289,6 +289,7 @@ export default function VideoCallPage() {
         setStatus('Generating the clinical report from the conversation...');
         await axios.post(`${backendUrl}/api/ai/clinical-note`, {
           roomUrl,
+          appointmentId,
           source: 'automatic_audio',
           transcript: [{ author: 'Consultation audio', message: transcriptText }],
           patientName: searchParams.get('patient') || 'the patient',
@@ -296,7 +297,7 @@ export default function VideoCallPage() {
         });
         setStatus('Report generated and saved. Please review it in the doctor dashboard.');
       } catch (transcriptionError) {
-        setError(`Automatic report failed: ${transcriptionError.message}`);
+        setError(`Automatic report failed: ${transcriptionError.response?.data?.error || transcriptionError.message}`);
         setStatus('Call ended. No audio was saved.');
       }
         resolve();

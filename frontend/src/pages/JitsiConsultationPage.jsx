@@ -173,6 +173,7 @@ export default function JitsiConsultationPage() {
             setStatus('Generating and saving the consultation report...');
             await axios.post(`${backendUrl}/api/ai/clinical-note`, {
               roomUrl,
+              appointmentId,
               source: 'jitsi_tab_audio',
               transcript: [{ author: 'Consultation audio', message: transcript }],
               patientName: searchParams.get('patient') || 'the patient',
@@ -180,13 +181,17 @@ export default function JitsiConsultationPage() {
             });
             setStatus('Conversation transcribed. Report generated and saved in the doctor patient record.');
           } catch (processingError) {
-            setError(`Automatic report failed: ${processingError.message}`);
+            setError(`Automatic report failed: ${processingError.response?.data?.error || processingError.message}`);
             setStatus('Recording stopped. The report was not saved.');
           } finally {
             chunksRef.current = [];
             captureStreamsRef.current.flatMap(stream => stream.getTracks()).forEach(track => track.stop());
             captureStreamsRef.current = [];
-            await audioContextRef.current?.close();
+            try {
+              await audioContextRef.current?.close();
+            } catch (cleanupError) {
+              console.warn('Could not close the recording audio context:', cleanupError);
+            }
             audioContextRef.current = null;
             setBusy(false);
             resolve();

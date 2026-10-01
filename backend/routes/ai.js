@@ -2,7 +2,8 @@ const router = require('express').Router();
 const ChatMessage = require('../models/ChatMessage');
 const mongoose = require('mongoose');
 const CallSession = require('../models/CallSession');
-const { demoCallSessions } = require('../demoStore');
+const Appointment = require('../models/Appointment');
+const { demoAppointments, demoCallSessions } = require('../demoStore');
 
 const crisisMessage = `I want to take this seriously. If you feel like you might hurt yourself or you are in immediate danger, please contact emergency services or a local crisis line right now. In the US and Canada, call or text 988. If you are elsewhere, use your local emergency or crisis support number. I can also stay with you and help you take the next safe step.`;
 
@@ -294,7 +295,7 @@ router.post('/chat', async (req, res) => {
 });
 
 router.post('/clinical-note', async (req, res) => {
-  const { roomUrl, transcript = [], source = 'transcript', patientName = 'the patient', doctorName = 'the clinician' } = req.body || {};
+  const { roomUrl, appointmentId, transcript = [], source = 'transcript', patientName = 'the patient', doctorName = 'the clinician' } = req.body || {};
 
   if (!roomUrl) return res.status(400).json({ error: 'roomUrl is required' });
   if (!Array.isArray(transcript) || transcript.length === 0) {
@@ -302,7 +303,16 @@ router.post('/clinical-note', async (req, res) => {
   }
 
   try {
-    const { note, model } = await generateClinicalNote(transcript, patientName, doctorName);
+    let note;
+    let model;
+    try {
+      ({ note, model } = await generateClinicalNote(transcript, patientName, doctorName));
+    } catch (providerError) {
+      console.warn('Clinical note provider failed; using local transcript-based draft:', providerError.message);
+      note = generateFallbackClinicalNote(transcript, patientName, doctorName);
+      model = 'local-fallback';
+    }
+
     const clinicalNote = {
       text: note,
       generatedAt: new Date(),
@@ -318,7 +328,23 @@ router.post('/clinical-note', async (req, res) => {
       .filter(item => item.message);
 
     if (mongoose.connection.readyState === 1) {
-      const session = await CallSession.findOne({ roomUrl });
+      let session = await CallSession.findOne({ roomUrl });
+      if (!session && appointmentId) {
+        const appointment = await Appointment.findById(appointmentId);
+        if (appointment && String(appointment.roomUrl) === String(roomUrl)) {
+          session = await CallSession.create({
+            patientId: appointment.patientId,
+            patientName: appointment.patientName,
+            doctorName: appointment.doctorName || doctorName,
+            roomUrl,
+            scheduledDate: appointment.scheduledDate,
+            scheduledTime: appointment.scheduledTime,
+            transcript: [],
+            summary: 'No transcript captured yet.',
+            isRecorded: false
+          });
+        }
+      }
       if (!session) return res.status(404).json({ error: 'Session not found' });
       session.clinicalNote = clinicalNote;
       session.transcript = savedTranscript;
@@ -327,7 +353,26 @@ router.post('/clinical-note', async (req, res) => {
       return res.status(200).json({ message: 'SOAP note drafted successfully', clinicalNote, session });
     }
 
-    const session = demoCallSessions.find(item => String(item.roomUrl) === String(roomUrl));
+    let session = demoCallSessions.find(item => String(item.roomUrl) === String(roomUrl));
+    if (!session && appointmentId) {
+      const appointment = demoAppointments.find(item => String(item._id) === String(appointmentId));
+      if (appointment && String(appointment.roomUrl) === String(roomUrl)) {
+        session = {
+          _id: `demo-session-${Date.now()}`,
+          patientId: appointment.patientId,
+          patientName: appointment.patientName,
+          doctorName: appointment.doctorName || doctorName,
+          roomUrl,
+          scheduledDate: appointment.scheduledDate,
+          scheduledTime: appointment.scheduledTime,
+          transcript: [],
+          summary: 'No transcript captured yet.',
+          isRecorded: false,
+          createdAt: new Date()
+        };
+        demoCallSessions.unshift(session);
+      }
+    }
     if (!session) return res.status(404).json({ error: 'Session not found' });
     session.clinicalNote = clinicalNote;
     session.transcript = savedTranscript;

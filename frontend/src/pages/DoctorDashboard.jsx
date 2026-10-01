@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import ChatRoom from '../components/ChatRoom';
@@ -25,6 +25,7 @@ export default function DoctorDashboard() {
   const [notifications, setNotifications] = useState([]);
   const [callSessions, setCallSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
+  const selectedPatientIdRef = useRef(null);
   const [transcriptText, setTranscriptText] = useState('');
   const [isDraftingNote, setIsDraftingNote] = useState(false);
   const [newConsultation, setNewConsultation] = useState({ date: '', time: '' });
@@ -95,6 +96,11 @@ export default function DoctorDashboard() {
     try {
       const res = await api.get('/api/appointment/sessions');
       setCallSessions(res.data);
+      setPatientCallSessions(previousSessions => {
+        const patientId = selectedPatientIdRef.current;
+        if (!patientId) return previousSessions;
+        return res.data.filter(session => String(session.patientId) === String(patientId));
+      });
     } catch (err) {
       console.error('Error fetching call sessions', err);
     }
@@ -215,6 +221,7 @@ export default function DoctorDashboard() {
   const inspectPatient = async (patientId) => {
     try {
       const res = await api.get(`/api/doctor/patient/${patientId}`);
+      selectedPatientIdRef.current = patientId;
       setSelectedPatient(res.data.patient);
       setPatientHistory(res.data.checkIns);
       setPatientAppointments(res.data.appointments || []);
