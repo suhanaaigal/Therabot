@@ -32,6 +32,7 @@ app.use(express.json());
 app.use(cors({ origin: process.env.FRONTEND_URL || true }));
 
 const isMongoConfigured = Boolean(process.env.MONGO_URI && process.env.MONGO_URI.startsWith('mongodb'));
+const isProduction = process.env.NODE_ENV === 'production';
 
 const normalizeTranscriptEntry = (item = {}) => {
   if (!item || typeof item !== 'object') return null;
@@ -107,7 +108,19 @@ const io = new Server(server, {
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  const databaseConnected = mongoose.connection.readyState === 1;
+  const isHealthy = !isProduction || databaseConnected;
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'ok' : 'database_unavailable',
+    persistence: databaseConnected ? 'mongodb' : 'demo-memory'
+  });
+});
+
+app.use((req, res, next) => {
+  if (isProduction && mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ error: 'Persistent storage is unavailable. Please retry when the database connection is restored.' });
+  }
+  return next();
 });
 
 // Routes
@@ -176,19 +189,35 @@ io.on('connection', (socket) => {
   });
 });
 
-// Connect to MongoDB if available; otherwise keep server running in demo mode.
+// Local development can use demo mode; production must never accept ephemeral data.
 const MONGO_URL = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/mental-health-db";
-
-if (isMongoConfigured) {
-  mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 5000 })
-    .then(() => console.log("MongoDB Connected Successfully"))
-    .catch((err) => console.log("MongoDB Connection Error: ", err.message));
-} else {
-  console.log("MongoDB not configured. Running in demo mode.");
-}
 
 const PORT = Number(process.env.PORT) || 5000;
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const startServer = async () => {
+  if (isProduction && !isMongoConfigured) {
+    throw new Error('MONGO_URI must be configured in production; refusing to start with non-persistent demo storage.');
+  }
+
+  if (isMongoConfigured) {
+    if (isProduction) {
+      await mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 10000 });
+      console.log('MongoDB Connected Successfully');
+    } else {
+      mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 5000 })
+        .then(() => console.log('MongoDB Connected Successfully'))
+        .catch(err => console.warn('MongoDB unavailable; local development is using demo storage:', err.message));
+    }
+  } else {
+    console.warn('MongoDB not configured. Running in non-persistent local demo mode.');
+  }
+
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+};
+
+startServer().catch(error => {
+  console.error('Server startup failed:', error.message);
+  process.exit(1);
 });

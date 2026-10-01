@@ -9,6 +9,7 @@
 - Build Command: npm install
 - Start Command: npm start
 - Environment variables:
+  - NODE_ENV=production
   - MONGO_URI
   - FRONTEND_URL
   - AI_PROVIDER
@@ -27,8 +28,12 @@
 
 ## 3. MongoDB
 
-- Create a MongoDB Atlas cluster.
-- Paste the connection string into MONGO_URI.
+- Create a MongoDB Atlas cluster and database user.
+- Allow the Render backend to connect in Atlas Network Access.
+- Set the Atlas connection string as `MONGO_URI` on the Render backend service. Keep the password URL-encoded and never commit this value to Git.
+- Confirm the backend `/health` endpoint reports `persistence: "mongodb"`. Production now refuses to start without the database, instead of silently saving patient data only in memory.
+- If Render says the backend service is suspended, resume it in the Render dashboard after configuring `MONGO_URI`.
+- Accounts created while the backend was using demo-memory mode are not retained across restarts and cannot be recovered from that memory.
 
 ## 4. Different-place testing
 
