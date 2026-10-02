@@ -163,10 +163,23 @@ router.post('/password-reset/request', async (req, res) => {
     if (!mailResponse.ok) {
       const providerError = (await mailResponse.text()).slice(0, 500);
       console.error(`Password reset email rejected by Resend (HTTP ${mailResponse.status}, ${maskEmail(email)}): ${providerError}`);
+      let providerMessage = '';
+      try {
+        const parsedError = JSON.parse(providerError);
+        providerMessage = String(parsedError.message || parsedError.error || '').toLowerCase();
+      } catch {
+        providerMessage = providerError.toLowerCase();
+      }
       patient.passwordResetCodeHash = null;
       patient.passwordResetExpiresAt = null;
       await patient.save?.();
-      return res.status(502).json({ error: 'We could not send the recovery email. Check the backend logs or try again later.' });
+      if (/verify|verified|domain|sender|from address/.test(providerMessage)) {
+        return res.status(502).json({ error: 'Resend rejected the sender address. Verify its domain in Resend, then set EMAIL_FROM to an address on that verified domain.' });
+      }
+      if (/testing|test mode|only send|recipient/.test(providerMessage)) {
+        return res.status(502).json({ error: 'Resend is restricted to test recipients. Verify a sending domain in Resend to email patient addresses.' });
+      }
+      return res.status(502).json({ error: 'Resend rejected the email. Check the Resend Logs and Render backend logs for the provider error.' });
     }
 
     const delivery = await mailResponse.json().catch(() => ({}));
