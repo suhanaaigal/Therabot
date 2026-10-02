@@ -1,0 +1,255 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api } from '../api';
+import DashboardShell from '../components/DashboardShell';
+
+const baseNavigation = [
+  { id: 'overview', label: 'Overview', icon: '⌂' },
+  { id: 'patients', label: 'Patients', icon: '♧' },
+  { id: 'appointments', label: 'Appointments', icon: '▦' },
+  { id: 'alerts', label: 'Alerts', icon: '!' }
+];
+
+export default function TherabotDoctorDashboard() {
+  const navigate = useNavigate();
+  const [patients, setPatients] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [activeSection, setActiveSection] = useState('overview');
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [patientHistory, setPatientHistory] = useState([]);
+  const [patientAppointments, setPatientAppointments] = useState([]);
+  const [patientNotifications, setPatientNotifications] = useState([]);
+  const [patientReport, setPatientReport] = useState(null);
+  const [patientSessions, setPatientSessions] = useState([]);
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [transcriptText, setTranscriptText] = useState('');
+  const [newConsultation, setNewConsultation] = useState({ date: '', time: '' });
+  const [search, setSearch] = useState('');
+  const selectedPatientIdRef = useRef(null);
+  const doctorName = localStorage.getItem('doctorName') || 'Dr. Suhana Aigal';
+  const sortedPatients = [...patients].sort((first, second) => riskValue(first.currentRiskBand) - riskValue(second.currentRiskBand));
+  const visiblePatients = sortedPatients.filter(patient => (patient.fullName || '').toLowerCase().includes(search.toLowerCase()));
+  const upcomingCalls = [...requests, ...appointments]
+    .filter(item => item.status === 'Approved' && item.roomUrl)
+    .filter((item, index, all) => all.findIndex(other => String(other._id) === String(item._id)) === index)
+    .sort((first, second) => new Date(`${first.scheduledDate}T${first.scheduledTime}`) - new Date(`${second.scheduledDate}T${second.scheduledTime}`));
+  const navigation = baseNavigation.map(item => item.id === 'alerts' ? { ...item, count: notifications.length } : item);
+
+  useEffect(() => {
+    if (localStorage.getItem('isDoctorAuthenticated') !== 'true') {
+      navigate('/doctor');
+      return undefined;
+    }
+    refreshAll();
+    const timer = window.setInterval(refreshAll, 12000);
+    return () => window.clearInterval(timer);
+  }, [navigate]);
+
+  async function refreshAll() {
+    await Promise.all([fetchPatients(), fetchAppointments(), fetchRequests(), fetchNotifications(), fetchSessions()]);
+  }
+
+  async function fetchPatients() {
+    try { const response = await api.get('/api/doctor/patients'); setPatients(response.data || []); }
+    catch (error) { console.error('Could not load patients', error); }
+  }
+  async function fetchAppointments() {
+    try { const response = await api.get('/api/appointment/all'); setAppointments(response.data || []); }
+    catch (error) { console.error('Could not load appointments', error); }
+  }
+  async function fetchRequests() {
+    try {
+      const doctorId = localStorage.getItem('doctorAuthId') || localStorage.getItem('doctorId');
+      if (!doctorId) return;
+      const response = await api.get(`/api/appointment/doctor/${doctorId}/requests`);
+      setRequests(response.data || []);
+    } catch (error) { console.error('Could not load appointment requests', error); }
+  }
+  async function fetchNotifications() {
+    try { const response = await api.get('/api/doctor/notifications'); setNotifications(response.data || []); }
+    catch (error) { console.error('Could not load alerts', error); }
+  }
+  async function fetchSessions() {
+    try {
+      const response = await api.get('/api/appointment/sessions');
+      setSessions(response.data || []);
+      if (selectedPatientIdRef.current) setPatientSessions((response.data || []).filter(session => String(session.patientId) === String(selectedPatientIdRef.current)));
+    } catch (error) { console.error('Could not load call sessions', error); }
+  }
+
+  async function inspectPatient(patientId) {
+    try {
+      const response = await api.get(`/api/doctor/patient/${patientId}`);
+      const data = response.data;
+      selectedPatientIdRef.current = patientId;
+      setSelectedPatient(data.patient);
+      setPatientHistory(data.checkIns || []);
+      setPatientAppointments(data.appointments || []);
+      setPatientNotifications(data.notifications || []);
+      setPatientReport(data.report || null);
+      setPatientSessions(data.callSessions || []);
+      setSelectedSession((data.callSessions || [])[0] || null);
+      setTranscriptText('');
+      setActiveSection('patient-report');
+    } catch (error) { window.alert(error?.response?.data?.error || 'Could not load this patient record.'); }
+  }
+
+  async function approveAppointment(id) {
+    try {
+      await api.patch(`/api/appointment/${id}/approve`, { doctorId: localStorage.getItem('doctorAuthId') || localStorage.getItem('doctorId') });
+      await refreshAll();
+    } catch (error) { window.alert(error?.response?.data?.error || 'Unable to approve appointment.'); }
+  }
+  async function declineAppointment(id) {
+    try { await api.patch(`/api/appointment/${id}/decline`); await refreshAll(); }
+    catch (error) { window.alert(error?.response?.data?.error || 'Unable to decline appointment.'); }
+  }
+
+  async function saveTranscript(event) {
+    event.preventDefault();
+    if (!selectedSession || !transcriptText.trim()) return;
+    const transcript = transcriptText.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
+      const patientLine = line.match(/^Patient\s*[:\-]?\s*(.*)$/i);
+      const doctorLine = line.match(/^Doctor\s*[:\-]?\s*(.*)$/i);
+      return { author: patientLine ? 'Patient' : 'Doctor', message: (patientLine?.[1] || doctorLine?.[1] || line).trim(), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+    }).filter(item => item.message);
+    try {
+      const saved = await api.post('/api/appointment/session/transcript', { roomUrl: selectedSession.roomUrl, transcript, doctorName });
+      const drafted = await api.post('/api/ai/clinical-note', { roomUrl: selectedSession.roomUrl, transcript, patientName: selectedPatient.fullName, doctorName });
+      const updated = drafted.data.session || saved.data.session;
+      setSelectedSession(updated);
+      setPatientSessions(previous => previous.map(session => session._id === updated._id ? updated : session));
+      setTranscriptText(transcript.map(item => `${item.author}: ${item.message}`).join('\n'));
+      await fetchSessions();
+    } catch (error) { window.alert(error?.response?.data?.error || 'Could not save the transcript or draft a report.'); }
+  }
+
+  async function scheduleConsultation(event) {
+    event.preventDefault();
+    if (!selectedPatient) return;
+    try {
+      await api.post('/api/appointment/book', { patientId: selectedPatient._id, patientName: selectedPatient.fullName, scheduledDate: newConsultation.date, scheduledTime: newConsultation.time });
+      setNewConsultation({ date: '', time: '' });
+      await refreshAll();
+      await inspectPatient(selectedPatient._id);
+    } catch (error) { window.alert(error?.response?.data?.error || 'Unable to schedule consultation.'); }
+  }
+
+  function downloadPatientReport() {
+    if (!selectedPatient) return;
+    const text = [
+      'THERABOT PATIENT REPORT',
+      `Patient: ${selectedPatient.fullName}`,
+      `Age / gender: ${selectedPatient.age} / ${selectedPatient.gender}`,
+      `Risk band: ${selectedPatient.currentRiskBand || 'Green'}`,
+      '', 'DAILY CHECK-INS',
+      ...patientHistory.map(item => `${new Date(item.date).toLocaleDateString()} | Sleep ${item.sleepHours}h | Mood ${item.moodScore}/10 | Anxiety ${item.anxietyLevel}/10 | ${item.journalText || 'No journal note'}`),
+      '', 'CONSULTATIONS',
+      ...patientSessions.map(session => `${session.scheduledDate} ${session.scheduledTime}\n${session.clinicalNote?.text || session.summary || 'No report yet.'}`),
+      '', `Generated ${new Date().toLocaleString()}`
+    ].join('\n');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${selectedPatient.fullName.replace(/\s+/g, '_')}_therabot_report.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const sectionHeading = selectedPatient && activeSection === 'patient-report'
+    ? ['Patient record', 'A clinical overview of check-ins, appointments and consultation notes.']
+    : {
+      overview: ['Care overview', 'A clear view of today’s care activity and the people who need follow-up.'],
+      patients: ['Patient directory', 'Review patient details, recent check-ins and consultation history.'],
+      appointments: ['Appointments', 'Manage requests and join approved consultations.'],
+      alerts: ['Alert center', 'Review notifications and elevated-risk follow-ups.']
+    }[activeSection] || ['Care overview', ''];
+
+  const content = activeSection === 'patient-report' && selectedPatient
+    ? <PatientRecord {...{ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, newConsultation, setNewConsultation, scheduleConsultation, downloadPatientReport, goBack: () => { setSelectedPatient(null); setActiveSection('patients'); } }} />
+    : activeSection === 'patients' ? <PatientDirectory patients={visiblePatients} search={search} setSearch={setSearch} inspectPatient={inspectPatient} />
+      : activeSection === 'appointments' ? <AppointmentView requests={requests} appointments={appointments} approve={approveAppointment} decline={declineAppointment} doctorName={doctorName} />
+        : activeSection === 'alerts' ? <AlertView notifications={notifications} />
+          : <Overview {...{ patients: sortedPatients, upcomingCalls, requests, notifications, inspectPatient, setActiveSection, refreshAll, approve: approveAppointment, decline: declineAppointment, doctorName }} />;
+
+  return (
+    <DashboardShell role="Doctor" name={doctorName} active={activeSection === 'patient-report' ? 'patients' : activeSection} onNavigate={section => { setSelectedPatient(null); setActiveSection(section); }} items={navigation}>
+      <div className="page-heading"><div><p className="page-eyebrow">Clinical workspace</p><h1 className="page-title">{sectionHeading[0]}</h1><p className="page-subtitle">{sectionHeading[1]}</p></div>{activeSection === 'patient-report' && selectedPatient && <div className="heading-actions"><button className="quiet-button" type="button" onClick={() => setActiveSection('patients')}>← Patients</button><button className="action-button" type="button" onClick={downloadPatientReport}>Download report ↓</button></div>}</div>
+      {content}
+      <nav className="mobile-nav" aria-label="Doctor navigation">{navigation.map(item => <button key={item.id} type="button" className={`rail-link ${activeSection === item.id || (activeSection === 'patient-report' && item.id === 'patients') ? 'is-active' : ''}`} onClick={() => { setSelectedPatient(null); setActiveSection(item.id); }}><span className="rail-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span></button>)}</nav>
+    </DashboardShell>
+  );
+}
+
+function riskValue(band) { return ({ Red: 0, Orange: 1, Yellow: 2, Green: 3 })[band] ?? 4; }
+function riskClass(band) { return String(band || 'Green').toLowerCase(); }
+function initials(name) { return String(name || 'P').split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase(); }
+
+function Overview({ patients, upcomingCalls, requests, notifications, inspectPatient, setActiveSection, refreshAll, approve, decline, doctorName }) {
+  const urgentCount = patients.filter(patient => ['Red', 'Orange'].includes(patient.currentRiskBand)).length;
+  return <div className="dash-section">
+    <div className="metric-grid">
+      <Metric label="Active patients" value={patients.length} foot="In your care directory" icon="♧" />
+      <Metric label="Priority follow-up" value={urgentCount} foot="Red and orange bands" tone="coral" icon="!" />
+      <Metric label="Upcoming calls" value={upcomingCalls.length} foot="Approved consultations" icon="▦" />
+      <Metric label="Open alerts" value={notifications.length} foot="Review recent activity" icon="↗" />
+    </div>
+    <div className="doctor-overview-grid">
+      <section className="panel panel-pad">
+        <div className="panel-head"><div><h2 className="panel-title">Patient priority</h2><p className="panel-caption">Patients with the highest reported risk appear first.</p></div><button className="quiet-button" type="button" onClick={() => setActiveSection('patients')}>View all →</button></div>
+        {patients.length ? <div className="data-list">{patients.slice(0, 5).map(patient => <div className="data-row" key={patient._id}><div className="patient-cell"><span className="avatar-badge">{initials(patient.fullName)}</span><span>{patient.fullName}</span></div><span className={`risk-badge ${riskClass(patient.currentRiskBand)}`}>{patient.currentRiskBand || 'Green'}</span><button className="text-action" type="button" onClick={() => inspectPatient(patient._id)}>Open record →</button></div>)}</div> : <div className="empty-state">No patients have been added yet.</div>}
+      </section>
+      <section className="panel panel-pad">
+        <div className="panel-head"><div><h2 className="panel-title">Appointment requests</h2><p className="panel-caption">Respond to pending requests from patients.</p></div><span className="count-badge">{requests.filter(item => item.status === 'Pending').length}</span></div>
+        {requests.filter(item => item.status === 'Pending').length ? requests.filter(item => item.status === 'Pending').slice(0, 4).map(item => <div className="request-item" key={item._id}><div className="data-main"><strong>{item.patientName}</strong><small>{item.scheduledDate} · {item.scheduledTime} · {item.urgency || 'Routine'}</small></div><div className="appointment-actions"><button className="tiny-action" type="button" onClick={() => approve(item._id)}>Accept</button><button className="tiny-action quiet" type="button" onClick={() => decline(item._id)}>Decline</button></div></div>) : <div className="empty-state">You’re all caught up.</div>}
+      </section>
+    </div>
+    <section className="panel panel-pad">
+      <div className="panel-head"><div><h2 className="panel-title">Upcoming consultations</h2><p className="panel-caption">Approved appointments and call room access.</p></div><button className="quiet-button" type="button" onClick={refreshAll}>↻ Refresh</button></div>
+      <AppointmentList items={upcomingCalls} doctorName={doctorName} />
+    </section>
+  </div>;
+}
+
+function Metric({ label, value, foot, tone = '', icon }) {
+  return <div className={`metric-card ${tone}`}><span className="metric-icon">{icon}</span><span className="metric-label">{label}</span><strong className="metric-value">{value}</strong><span className="metric-foot">{foot}</span></div>;
+}
+
+function PatientDirectory({ patients, search, setSearch, inspectPatient }) {
+  return <section className="panel panel-pad"><div className="panel-head directory-head"><div><h2 className="panel-title">All patients <span className="count-badge">{patients.length}</span></h2><p className="panel-caption">Select a patient to view their complete history.</p></div><label className="search-field"><span aria-hidden="true">⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Find a patient" aria-label="Search patients" /></label></div>
+    {patients.length ? <div className="table-wrap"><table className="patient-table"><thead><tr><th>Patient</th><th>Risk band</th><th>Age / gender</th><th>Phone</th><th>Emergency contact</th><th /></tr></thead><tbody>{patients.map(patient => <tr key={patient._id}><td><div className="patient-cell"><span className="avatar-badge">{initials(patient.fullName)}</span>{patient.fullName || 'Unnamed patient'}</div></td><td><span className={`risk-badge ${riskClass(patient.currentRiskBand)}`}>{patient.currentRiskBand || 'Green'}</span></td><td>{patient.age || '—'} · {patient.gender || '—'}</td><td>{patient.phoneNumber || '—'}</td><td>{patient.emergencyContact || '—'}</td><td><button className="text-action" type="button" onClick={() => inspectPatient(patient._id)}>View record →</button></td></tr>)}</tbody></table></div> : <div className="empty-state">No matching patients found.</div>}
+  </section>;
+}
+
+function AppointmentView({ requests, appointments, approve, decline, doctorName }) {
+  const pending = requests.filter(item => item.status === 'Pending');
+  const approved = [...appointments, ...requests].filter(item => item.status === 'Approved' && item.roomUrl).filter((item, index, all) => all.findIndex(other => String(other._id) === String(item._id)) === index);
+  return <div className="dash-section"><section className="panel panel-pad"><div className="panel-head"><div><h2 className="panel-title">Needs your response</h2><p className="panel-caption">Appointment requests waiting for review.</p></div><span className="count-badge">{pending.length}</span></div>{pending.length ? <div className="data-list">{pending.map(item => <div className="appointment-card" key={item._id}><div className="data-main"><strong>{item.patientName || 'Patient'}</strong><small>{item.scheduledDate} at {item.scheduledTime} · {item.urgency || 'Routine'}{item.isAvailable === false ? ' · Time conflict' : ''}</small></div><div className="appointment-actions"><button className="action-button" type="button" onClick={() => approve(item._id)}>Accept</button><button className="quiet-button" type="button" onClick={() => decline(item._id)}>Decline</button></div></div>)}</div> : <div className="empty-state">No pending appointment requests.</div>}</section><section className="panel panel-pad"><div className="panel-head"><div><h2 className="panel-title">Approved consultations</h2><p className="panel-caption">Call rooms for upcoming appointments.</p></div></div><AppointmentList items={approved} doctorName={doctorName} /></section></div>;
+}
+
+function AppointmentList({ items, doctorName }) {
+  if (!items.length) return <div className="empty-state">No approved consultations scheduled.</div>;
+  return <div className="data-list">{items.map(item => {
+    const query = `role=doctor&name=${encodeURIComponent(doctorName)}&patient=${encodeURIComponent(item.patientName || 'Patient')}&date=${encodeURIComponent(item.scheduledDate)}&time=${encodeURIComponent(item.scheduledTime)}&appointmentId=${encodeURIComponent(item._id)}`;
+    const room = encodeURIComponent(item.roomUrl);
+    return <div className="appointment-card" key={item._id}><div className="appointment-date"><span>{new Date(`${item.scheduledDate}T${item.scheduledTime}`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span><small>{item.scheduledTime}</small></div><div className="data-main"><strong>{item.patientName || 'Patient'}</strong><small>{item.scheduledDate} · {item.status || 'Approved'}</small></div><div className="appointment-actions"><a className="quiet-button" href={`/#/call/${room}?${query}`} target="_blank" rel="noreferrer">Open call ↗</a><a className="action-button" href={`/#/jitsi/${room}?${query}`} target="_blank" rel="noreferrer">Jitsi report ↗</a></div></div>;
+  })}</div>;
+}
+
+function AlertView({ notifications }) {
+  return <section className="panel panel-pad"><div className="panel-head"><div><h2 className="panel-title">Recent alerts</h2><p className="panel-caption">Updates and notifications from patient activity.</p></div></div>{notifications.length ? <div className="alert-list">{notifications.map(item => <div className={`alert-row ${item.severity === 'critical' ? 'critical' : ''}`} key={item._id}><strong>{item.patientName || 'Patient'} · {item.severity || 'Update'}</strong><p>{item.message}</p></div>)}</div> : <div className="empty-state">No active alerts.</div>}</section>;
+}
+
+function PatientRecord({ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, newConsultation, setNewConsultation, scheduleConsultation, downloadPatientReport, goBack }) {
+  return <div className="dash-section"><section className="patient-record-banner panel"><div className="patient-record-avatar">{initials(selectedPatient.fullName)}</div><div className="record-identity"><h2>{selectedPatient.fullName}</h2><p>{selectedPatient.age || 'Age not listed'} · {selectedPatient.gender || 'Gender not listed'} · {selectedPatient.phoneNumber || 'No phone listed'}</p></div><span className={`risk-badge ${riskClass(selectedPatient.currentRiskBand)}`}>{selectedPatient.currentRiskBand || 'Green'} risk</span><button className="quiet-button record-back-mobile" type="button" onClick={goBack}>← Patient list</button></section>
+    <div className="metric-grid"><Metric label="Average mood" value={patientReport?.averages?.mood ?? '—'} foot="Out of 10" icon="☼" /><Metric label="Average anxiety" value={patientReport?.averages?.anxiety ?? '—'} foot="Out of 10" tone="coral" icon="◌" /><Metric label="Average sleep" value={patientReport?.averages?.sleep ?? '—'} foot="Hours per night" icon="◷" /><Metric label="Care activity" value={patientAppointments.length + patientSessions.length} foot="Appointments and calls" icon="▦" /></div>
+    {patientReport?.notes && <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Clinical snapshot</h3><p className="panel-caption">Summary from recorded check-ins.</p></div></div><p className="snapshot-text">{patientReport.notes}</p></section>}
+    <div className="report-columns"><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Daily check-ins</h3><p className="panel-caption">Newest reflections and wellbeing signals.</p></div></div>{patientHistory.length ? <div className="data-list">{patientHistory.map(item => <article className="history-item" key={item._id || item.date}><div className="history-date">{new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}<span className={`risk-badge ${riskClass(item.calculatedBand)}`}>{item.calculatedBand}</span></div><div className="history-metrics">Mood <strong>{item.moodScore}/10</strong><span>·</span> Anxiety <strong>{item.anxietyLevel}/10</strong><span>·</span> Sleep <strong>{item.sleepHours}h</strong></div>{item.journalText && <p className="history-journal">{item.journalText}</p>}</article>)}</div> : <div className="empty-state">No check-ins recorded.</div>}</section>
+      <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Consultations & reports</h3><p className="panel-caption">Transcripts and clinician-review drafts.</p></div><span className="count-badge">{patientSessions.filter(session => session.clinicalNote?.text).length} reports</span></div>{patientSessions.length ? <div className="data-list">{patientSessions.map(session => <article className="session-item" key={session._id}><div className="panel-head"><div><strong>{session.scheduledDate} · {session.scheduledTime}</strong><small className="session-state">{session.transcript?.length ? 'Conversation captured' : 'No transcript'} · {session.clinicalNote?.text ? 'Report ready' : 'No report yet'}</small></div><button className="quiet-button" type="button" onClick={() => { setSelectedSession(session); setTranscriptText((session.transcript || []).map(item => `${item.author}: ${item.message}`).join('\n')); }}>{selectedSession?._id === session._id ? 'Selected' : 'Review'}</button></div><p className="session-summary">{session.summary || 'Summary appears after a conversation is captured.'}</p>{session.clinicalNote?.text && <details><summary className="details-trigger">View clinical report</summary><div className="report-note">{session.clinicalNote.text}</div><small className="review-note">Draft for clinician review before use.</small></details>}{session.transcript?.length > 0 && <details className="transcript-details"><summary className="details-trigger muted">View transcript ({session.transcript.length} segment{session.transcript.length === 1 ? '' : 's'})</summary><div className="transcript-list">{session.transcript.map((entry, index) => <p key={`${session._id}-${index}`}><strong>{entry.author}:</strong> {entry.message}</p>)}</div></details>}</article>)}</div> : <div className="empty-state">No consultation history recorded.</div>}</section></div>
+    {selectedSession && <div className="report-columns"><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Review or draft a note</h3><p className="panel-caption">Edit transcript text before saving and generating a draft.</p></div></div><form onSubmit={saveTranscript}><div className="form-field"><label htmlFor="transcript">Call transcript</label><textarea id="transcript" rows="8" value={transcriptText} onChange={event => setTranscriptText(event.target.value)} placeholder={'Patient: I have been feeling stressed lately.\nDoctor: When did you first notice it?'} /></div><div className="form-actions"><button className="action-button" type="submit">Save transcript & draft report →</button></div></form></section><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Schedule consultation</h3><p className="panel-caption">Create a new appointment for {selectedPatient.fullName}.</p></div></div><form onSubmit={scheduleConsultation}><div className="form-grid"><div className="form-field"><label htmlFor="visit-date">Date</label><input id="visit-date" type="date" value={newConsultation.date} onChange={event => setNewConsultation({ ...newConsultation, date: event.target.value })} required /></div><div className="form-field"><label htmlFor="visit-time">Time</label><input id="visit-time" type="time" value={newConsultation.time} onChange={event => setNewConsultation({ ...newConsultation, time: event.target.value })} required /></div></div><div className="form-actions"><button className="action-button" type="submit">Schedule visit →</button></div></form></section></div>}
+    {(patientAppointments.length > 0 || patientNotifications.length > 0) && <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Appointments & alerts</h3><p className="panel-caption">Recent scheduling activity for this patient.</p></div></div><div className="report-columns"><div className="data-list">{patientAppointments.map(item => <div className="data-row" key={item._id}><div className="data-main"><strong>{item.scheduledDate} · {item.scheduledTime}</strong><small>{item.status} · {item.urgency || 'Routine'}</small></div></div>)}</div><div className="alert-list">{patientNotifications.map(item => <div className={`alert-row ${item.severity === 'critical' ? 'critical' : ''}`} key={item._id}><strong>{item.severity || 'Update'}</strong><p>{item.message}</p></div>)}</div></div></section>}
+  </div>;
+}

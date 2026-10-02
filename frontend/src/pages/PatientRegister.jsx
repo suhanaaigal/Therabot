@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { api } from '../api';
 
 export default function PatientRegister() {
-  const [form, setForm] = useState({ fullName: '', age: '', gender: '', phoneNumber: '', emergencyContact: '' });
+  const [form, setForm] = useState({ fullName: '', email: '', age: '', gender: '', phoneNumber: '', emergencyContact: '' });
   const [step, setStep] = useState(1);
   const [otp, setOtp] = useState('');
   const [demoOtp, setDemoOtp] = useState('');
@@ -61,6 +61,7 @@ export default function PatientRegister() {
         {step === 1 ? (
           <form onSubmit={handleRegister} style={{ display: 'grid', gap: '14px' }}>
             <input style={inputStyle} type="text" placeholder="Full Name" value={form.fullName} onChange={e => setForm({ ...form, fullName: e.target.value })} required />
+            <input style={inputStyle} type="email" autoComplete="email" placeholder="Email address" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <input style={inputStyle} type="number" placeholder="Age" value={form.age} onChange={e => setForm({ ...form, age: e.target.value })} required />
               <select style={inputStyle} value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })} required>
@@ -70,7 +71,7 @@ export default function PatientRegister() {
                 <option value="Other">Other</option>
               </select>
             </div>
-            <input style={inputStyle} type="text" placeholder="Phone Number (+91...)" value={form.phoneNumber} onChange={e => setForm({ ...form, phoneNumber: e.target.value })} required />
+            <input style={inputStyle} type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} title="Enter exactly 10 digits." placeholder="10-digit Phone Number" value={form.phoneNumber} onChange={e => setForm({ ...form, phoneNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })} required />
             <input style={inputStyle} type="text" placeholder="Emergency Contact" value={form.emergencyContact} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} required />
             <button type="submit" style={primaryButtonStyle}>Register & Send OTP</button>
           </form>

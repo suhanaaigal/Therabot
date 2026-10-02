@@ -2,12 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import io from 'socket.io-client';
+import { backendUrl } from '../api';
 import { transcribeAudioBlob } from '../utils/transcribeAudio';
 
-const configuredBackendUrl = import.meta.env.VITE_API_URL;
-const backendUrl = configuredBackendUrl && !/^https?:\/\//i.test(configuredBackendUrl)
-  ? `https://${configuredBackendUrl}`
-  : configuredBackendUrl || `${window.location.protocol}//${window.location.hostname}:5000`;
 const socket = io(backendUrl, { autoConnect: true });
 const rtcConfiguration = {
   iceServers: [

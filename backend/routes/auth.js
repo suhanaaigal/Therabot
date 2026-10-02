@@ -1,4 +1,7 @@
 const router = require('express').Router();
+const crypto = require('crypto');
+const isValidPhoneNumber = phoneNumber => /^\d{10}$/.test(String(phoneNumber || '').trim());
+const isValidEmail = email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
 const twilio = require('twilio');
@@ -35,13 +38,21 @@ const sendOtpViaTwilio = async (phoneNumber, otpCode) => {
 
 router.post('/register-simple', async (req, res) => {
   try {
-    const { fullName, age, gender, phoneNumber, emergencyContact, password } = req.body;
+    const { fullName, email, age, gender, phoneNumber, emergencyContact, password } = req.body;
 
-    if (!fullName || !password) {
-      return res.status(400).json({ error: 'Name and password are required' });
+    if (!fullName || !password || !isValidEmail(email)) {
+      return res.status(400).json({ error: 'Name, a valid email address, and password are required.' });
+    }
+    if (!isValidPhoneNumber(phoneNumber)) {
+      return res.status(400).json({ error: 'Phone number must be exactly 10 digits.' });
     }
 
     const normalizedName = fullName.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingEmail = await Patient.findOne({ email: normalizedEmail }).catch(() => null);
+    if (existingEmail) {
+      return res.status(409).json({ error: 'An account with this email already exists. Sign in or reset your password.' });
+    }
     const existing = await Patient.findOne({ fullName: { $regex: new RegExp(`^${normalizedName}$`, 'i') } }).catch(() => null);
     if (existing) {
       return res.status(409).json({ error: 'A patient with this name already exists. Please log in instead.' });
@@ -49,6 +60,7 @@ router.post('/register-simple', async (req, res) => {
 
     const patientData = {
       fullName: normalizedName,
+      email: normalizedEmail,
       age: Number(age || 0),
       gender: gender || 'Prefer not to say',
       phoneNumber: phoneNumber || `${Date.now()}`,
@@ -81,15 +93,17 @@ router.post('/register-simple', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    const { fullName, password } = req.body;
+    const { fullName, email, password } = req.body;
+    const identifier = String(email || fullName || '').trim();
 
-    if (!fullName || !password) {
-      return res.status(400).json({ error: 'Name and password are required' });
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
     }
 
-    let patient = await Patient.findOne({ fullName }).catch(() => null);
+    let patient = await Patient.findOne({ email: identifier.toLowerCase() }).catch(() => null);
+    if (!patient) patient = await Patient.findOne({ fullName: identifier }).catch(() => null);
     if (!patient) {
-      patient = demoPatients.get(fullName) || null;
+      patient = demoPatients.get(identifier) || [...demoPatients.values()].find(item => String(item.email || '').toLowerCase() === identifier.toLowerCase()) || null;
     }
 
     if (!patient) {
@@ -110,6 +124,77 @@ router.post('/login', async (req, res) => {
   }
 });
 
+router.post('/password-reset/request', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!isValidEmail(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
+    return res.status(503).json({ error: 'Password recovery email is not configured yet. Please contact the care team.' });
+  }
+
+  try {
+    const patient = await Patient.findOne({ email }).catch(() => null)
+      || [...demoPatients.values()].find(item => String(item.email || '').toLowerCase() === email);
+    if (patient) {
+      const resetCode = crypto.randomInt(100000, 1000000).toString();
+      const resetHash = crypto.createHash('sha256').update(resetCode).digest('hex');
+      patient.passwordResetCodeHash = resetHash;
+      patient.passwordResetExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      await patient.save?.();
+      if (!patient.save) demoPatients.set(String(patient._id), patient);
+
+      const mailResponse = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: process.env.EMAIL_FROM,
+          to: [email],
+          subject: 'Your Therabot password reset code',
+          text: `Your Therabot password reset code is ${resetCode}. It expires in 15 minutes. If you did not request this, you can ignore this email.`
+        })
+      });
+      if (!mailResponse.ok) {
+        patient.passwordResetCodeHash = null;
+        patient.passwordResetExpiresAt = null;
+        await patient.save?.();
+        return res.status(502).json({ error: 'We could not send the recovery email. Please try again later.' });
+      }
+    }
+
+    return res.status(200).json({ message: 'If an account exists for that email, a reset code has been sent.' });
+  } catch (error) {
+    console.error('Password reset request failed:', error.message);
+    return res.status(500).json({ error: 'Could not process the password reset request.' });
+  }
+});
+
+router.post('/password-reset/complete', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const code = String(req.body?.code || '').trim();
+  const password = String(req.body?.password || '');
+  if (!isValidEmail(email) || !/^\d{6}$/.test(code) || password.length < 8) {
+    return res.status(400).json({ error: 'Enter the six-digit code and a new password with at least 8 characters.' });
+  }
+
+  try {
+    const patient = await Patient.findOne({ email }).catch(() => null)
+      || [...demoPatients.values()].find(item => String(item.email || '').toLowerCase() === email);
+    const suppliedHash = crypto.createHash('sha256').update(code).digest('hex');
+    if (!patient || patient.passwordResetCodeHash !== suppliedHash || !patient.passwordResetExpiresAt || new Date(patient.passwordResetExpiresAt).getTime() < Date.now()) {
+      return res.status(400).json({ error: 'That code is invalid or expired. Request a new one.' });
+    }
+
+    patient.password = password;
+    patient.passwordResetCodeHash = null;
+    patient.passwordResetExpiresAt = null;
+    await patient.save?.();
+    if (!patient.save) demoPatients.set(String(patient._id), patient);
+    return res.status(200).json({ message: 'Password updated. You can now sign in.' });
+  } catch (error) {
+    console.error('Password reset completion failed:', error.message);
+    return res.status(500).json({ error: 'Could not update the password.' });
+  }
+});
+
 router.post('/doctor-login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -126,10 +211,14 @@ router.post('/doctor-login', async (req, res) => {
         return res.status(401).json({ error: 'Incorrect password' });
       }
 
+      if (doctor.username === 'doctor' && doctor.fullName !== 'Dr. Suhana Aigal') {
+        doctor.fullName = 'Dr. Suhana Aigal';
+        await doctor.save();
+      }
       demoDoctors.set(String(doctor._id || doctor.username), doctor.toObject ? doctor.toObject() : doctor);
       return res.status(200).json({
         message: 'Doctor login successful',
-        doctorName: doctor.fullName,
+        doctorName: doctor.username === 'doctor' ? 'Dr. Suhana Aigal' : doctor.fullName,
         username: doctor.username,
         doctorId: String(doctor._id)
       });
@@ -154,8 +243,20 @@ router.post('/doctor-login', async (req, res) => {
 // 1. Register Patient & Send OTP
 router.post('/register', async (req, res) => {
   try {
-    const { fullName, age, gender, phoneNumber, emergencyContact } = req.body;
+    const { fullName, email, age, gender, phoneNumber, emergencyContact } = req.body;
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'A valid email address is required.' });
+    }
+    if (!isValidPhoneNumber(phoneNumber)) {
+      return res.status(400).json({ error: 'Phone number must be exactly 10 digits.' });
+    }
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingEmail = await Patient.findOne({ email: normalizedEmail }).catch(() => null);
+    if (existingEmail && String(existingEmail.phoneNumber) !== String(phoneNumber)) {
+      return res.status(409).json({ error: 'An account with this email already exists.' });
+    }
 
     let patient = null;
     try {
@@ -166,6 +267,7 @@ router.post('/register', async (req, res) => {
 
     if (patient) {
       patient.fullName = fullName;
+      patient.email = normalizedEmail;
       patient.age = age;
       patient.gender = gender;
       patient.emergencyContact = emergencyContact;
@@ -175,6 +277,7 @@ router.post('/register', async (req, res) => {
     } else {
       const patientData = {
         fullName,
+        email: normalizedEmail,
         age,
         gender,
         phoneNumber,

@@ -13,7 +13,7 @@ const ensureDefaultDoctor = () => {
     _id: 'doctor-default',
     username: 'doctor',
     password: 'doctor123',
-    fullName: 'Dr. Aisha Khan',
+    fullName: 'Dr. Suhana Aigal',
     specialty: 'Mental Wellness',
     createdAt: new Date()
   };

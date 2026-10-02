@@ -16,6 +16,8 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
   const [message, setMessage] = useState('');
   const [listening, setListening] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [chatError, setChatError] = useState('');
+  const [basicMode, setBasicMode] = useState(false);
   const recognizerRef = useRef(null);
   const [messageList, setMessageList] = useState([
     {
@@ -93,6 +95,7 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
     setMessageList((list) => [...list, userMessage]);
     setMessage('');
     setIsTyping(true);
+    setChatError('');
 
     try {
       const conversationHistory = messageList.slice(-8).map((item) => ({
@@ -104,6 +107,7 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
         message: textToSend,
         history: conversationHistory
       });
+      setBasicMode(res.data.provider === 'basic-fallback');
 
       const aiReply = {
         author: 'AI Companion',
@@ -114,13 +118,7 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
 
       setMessageList((list) => [...list, aiReply]);
     } catch (error) {
-      const fallbackReply = {
-        author: 'AI Companion',
-        message: 'I’m here with you. Take a slow breath and tell me what feels hardest right now. We can work through it gently.',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isAi: true
-      };
-      setMessageList((list) => [...list, fallbackReply]);
+      setChatError(error?.response?.data?.error || 'The companion could not reply. Your message is still here; please try again.');
     } finally {
       setIsTyping(false);
     }
@@ -165,6 +163,12 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
           ))}
         </div>
       )}
+
+      {mode !== 'live' && basicMode && (
+        <div role="status" className="chat-mode-notice">Basic mode is active. For model-generated conversation, configure an AI provider for the backend.</div>
+      )}
+
+      {chatError && <div role="alert" className="chat-error-notice">{chatError}</div>}
 
       <div style={{ height: '360px', overflowY: 'auto', padding: '18px', background: '#f7f9ff' }}>
         {messageList.map((content, index) => {

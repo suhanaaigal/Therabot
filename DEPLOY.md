@@ -12,10 +12,15 @@
   - NODE_ENV=production
   - MONGO_URI
   - FRONTEND_URL
-  - AI_PROVIDER
-  - OPENAI_API_KEY (optional if using Ollama)
-  - OPENAI_MODEL
-  - OLLAMA_MODEL
+  - AI_PROVIDER=openai
+  - OPENAI_API_KEY (set privately in Render; do not commit it)
+  - OPENAI_MODEL=gpt-4o-mini
+  - RESEND_API_KEY (set privately in Render for password recovery)
+  - EMAIL_FROM (a sender address verified with Resend)
+
+The AI companion uses a context-aware basic fallback when no model provider is configured. For model-generated replies, set a valid provider and credentials on the backend service. To use Ollama instead, set `AI_PROVIDER=ollama`, `OLLAMA_MODEL`, and `OPENAI_BASE_URL` to the Ollama OpenAI-compatible endpoint.
+
+Patient password recovery sends a six-digit, 15-minute reset code through Resend. Configure `RESEND_API_KEY` and a verified `EMAIL_FROM` on the backend service before enabling the recovery workflow.
 
 ## 2. Frontend on Vercel
 

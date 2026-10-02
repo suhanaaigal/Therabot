@@ -47,11 +47,16 @@ const getDefaultDoctor = async () => {
       {
         username: 'doctor',
         password: 'doctor123',
-        fullName: 'Dr. Aisha Khan',
+        fullName: 'Dr. Suhana Aigal',
         specialty: 'Mental Wellness'
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
+  }
+
+  if (doctor?.username === 'doctor' && doctor.fullName !== 'Dr. Suhana Aigal') {
+    doctor.fullName = 'Dr. Suhana Aigal';
+    await doctor.save();
   }
 
   return doctor;
@@ -151,7 +156,7 @@ router.get('/doctors', async (req, res) => {
         {
           username: 'doctor',
           password: 'doctor123',
-          fullName: 'Dr. Aisha Khan',
+          fullName: 'Dr. Suhana Aigal',
           specialty: 'Mental Wellness'
         },
         { new: true, upsert: true, setDefaultsOnInsert: true }

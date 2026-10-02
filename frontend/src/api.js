@@ -5,5 +5,9 @@ const hostedBackendUrl = configuredBackendUrl && !/^https?:\/\//i.test(configure
 	? `https://${configuredBackendUrl}`
 	: configuredBackendUrl;
 
-export const backendUrl = hostedBackendUrl || `${window.location.protocol}//${window.location.hostname}:5000`;
+const localDevelopmentBackendUrl = import.meta.env.DEV
+	? 'https://therabot-backend-go2r.onrender.com'
+	: `${window.location.protocol}//${window.location.hostname}:5000`;
+
+export const backendUrl = hostedBackendUrl || localDevelopmentBackendUrl;
 export const api = axios.create({ baseURL: backendUrl });

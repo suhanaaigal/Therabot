@@ -7,179 +7,75 @@ const { demoAppointments, demoCallSessions } = require('../demoStore');
 
 const crisisMessage = `I want to take this seriously. If you feel like you might hurt yourself or you are in immediate danger, please contact emergency services or a local crisis line right now. In the US and Canada, call or text 988. If you are elsewhere, use your local emergency or crisis support number. I can also stay with you and help you take the next safe step.`;
 
-/* Kept out of the response path: the companion uses a language model, not keyword rules. */
-const conversationDataset = [
-  {
-    id: 'anxiety',
-    keywords: ['anxious', 'panic', 'worried', 'nervous', 'afraid', 'fear'],
-    responses: [
-      'Anxiety can make your mind race ahead before your body has even caught up. Let’s slow this down and focus on the present moment instead of everything that might happen later.',
-      'It sounds like your nervous system feels activated. That does not mean you are failing; it means your body is under stress. Let’s ground it with something simple and steady.',
-      'When anxiety spikes, the mind tends to imagine the worst case. We can reduce that by focusing on one concrete fact, one breath, and one next step.'
-    ],
-    followUps: ['What feels most intense right now?', 'What is the thought that feels loudest at the moment?']
-  },
-  {
-    id: 'overwhelm',
-    keywords: ['overwhelmed', 'too much', 'stress', 'stressed', 'pressure', 'burnt out'],
-    responses: [
-      'It sounds like too much is landing at once, and that can make even small tasks feel impossible. You do not have to solve your whole life today.',
-      'When everything piles up, the brain treats it like a wall. We can make the wall smaller by choosing only the next reasonable action.',
-      'This is a lot to carry, and it makes sense that you feel stretched thin. Let’s reduce the load instead of adding more pressure.'
-    ],
-    followUps: ['Which task feels most urgent?', 'What would make today feel a little lighter?']
-  },
-  {
-    id: 'work',
-    keywords: ['project', 'work', 'deadline', 'task', 'assignment', 'report', 'lot of work', 'too much work'],
-    responses: [
-      'Big work becomes impossible when you look at all of it as one giant block. The trick is to stop thinking about the whole project and focus on the next visible step.',
-      'A project does not need to be finished in one sitting. The goal is to choose the next action clearly and keep moving without forcing perfection.',
-      'That kind of workload can make anyone feel stuck. We can break it down into smaller chunks so it starts to feel doable again.'
-    ],
-    followUps: ['What part of the work feels most blocked?', 'Can we find the smallest next step together?']
-  },
-  {
-    id: 'sleep',
-    keywords: ['sleep', 'tired', 'exhausted', 'cannot sleep', 'insomnia', 'low energy'],
-    responses: [
-      'Low sleep can make everything feel louder and heavier. Your mind may be trying to stay alert because your body is tired and unsettled.',
-      'When the body is exhausted, the mind often feels more restless. A calmer routine helps the body remember that it is safe to rest.',
-      'You may not need to fix the whole night; you just need one gentle action that helps your body feel a little safer.'
-    ],
-    followUps: ['What usually happens before sleep becomes difficult?', 'Are you feeling mentally wired or physically drained?']
-  },
-  {
-    id: 'sadness',
-    keywords: ['sad', 'lonely', 'empty', 'depressed', 'hopeless', 'cry', 'down'],
-    responses: [
-      'It sounds like you are carrying a heavy feeling right now, and it deserves gentleness. You are not weak for feeling low.',
-      'When sadness is strong, even small tasks can feel impossible. Try noticing one tiny comfort you can offer yourself without forcing it.',
-      'The pain is real, and it does not need to be solved all at once. We can make this moment smaller and easier to carry.'
-    ],
-    followUps: ['What feels heaviest right now?', 'Is there one small comfort that might help you feel a bit safer?']
-  },
-  {
-    id: 'anger',
-    keywords: ['angry', 'frustrated', 'mad', 'irritated', 'annoyed'],
-    responses: [
-      'Frustration often hides deeper stress or a sense that something feels unfair. It makes sense that you feel activated.',
-      'Anger is a signal, not a verdict. Before reacting, ask what is really being threatened or ignored underneath the emotion.',
-      'You do not have to handle the whole problem in this moment. Choose one action that reduces the tension without escalating things.'
-    ],
-    followUps: ['What specifically triggered this feeling?', 'What would help your body feel a little more settled?']
-  },
-  {
-    id: 'guilt',
-    keywords: ['guilty', 'ashamed', 'worthless', 'failure', 'not enough', 'bad person'],
-    responses: [
-      'That is a painful thought pattern, and it is not a fair summary of who you are. One difficult moment does not define your value.',
-      'I would not talk to you the way that thought is talking to you. Try replacing “I failed” with “I am struggling, and I need support.”',
-      'You are allowed to be imperfect and still deserve kindness. A hard day is not the same as a broken identity.'
-    ],
-    followUps: ['What thought feels the harshest right now?', 'What would you say to a friend who had this thought?']
-  },
-  {
-    id: 'support',
-    keywords: ['hello', 'hi', 'hey', 'help me', 'i need help', 'good morning'],
-    responses: [
-      'I’m here with you, and you do not need to explain everything perfectly. Start with the feeling that is most present, and we will move gently from there.',
-      'You do not have to be productive to deserve support. Tell me what is happening in the simplest words you can find.',
-      'This space is meant to be supportive, not demanding. We can keep it simple and honest.'
-    ],
-    followUps: ['What feels most difficult right now?', 'Would you like to talk about stress, thoughts, or your energy?']
-  }
-];
+const detectCrisis = (text = '') => /\b(kill myself|end my life|suicid(?:e|al)|hurt myself|self[- ]harm|don't want to live|do not want to live|wish i were dead|no reason to live|i may hurt myself|i am in immediate danger|i am unsafe)\b/i.test(text);
+const getConfiguredModel = useOllama => useOllama
+  ? process.env.OLLAMA_MODEL || 'llama3.2'
+  : process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
-const detectCrisis = (text = '') => {
-  const message = text.toLowerCase();
-  const crisisPatterns = [
-    'suicidal', 'kill myself', 'end my life', 'hurt myself', 'self harm', 'self-harm',
-    'don\'t want to live', 'wish i were dead', 'can\'t go on', 'no reason to live',
-    'hopeless', 'panic attack', 'i am unsafe', 'i may hurt myself', 'i want to disappear'
-  ];
+const generateContextualFallback = (message, conversation = []) => {
+  const latestUserMessage = String(message || '').replace(/\s+/g, ' ').trim();
+  const previousUserMessage = [...conversation].reverse().find(item => item.role === 'user')?.content;
+  const context = previousUserMessage && previousUserMessage !== latestUserMessage
+    ? ` Earlier you mentioned: “${String(previousUserMessage).slice(0, 180)}”.`
+    : '';
 
-  return crisisPatterns.some((pattern) => message.includes(pattern));
-};
-
-const findDatasetMatch = (userMessage = '') => {
-  const text = (userMessage || '').toLowerCase();
-  return conversationDataset.find((entry) =>
-    entry.keywords.some((keyword) => text.includes(keyword.toLowerCase()))
-  );
-};
-
-const buildGroundingStep = (userMessage = '') => {
-  const text = (userMessage || '').toLowerCase();
-
-  if (text.includes('anxious') || text.includes('panic') || text.includes('worried')) {
-    return 'Try a 4-6 breathing rhythm: inhale for 4 counts, exhale for 6, and repeat it 4 times. Let your jaw and shoulders soften as you breathe out.';
-  }
-
-  if (text.includes('project') || text.includes('work') || text.includes('deadline') || text.includes('task')) {
-    return 'Choose the single next visible step and do only that for the next 15 minutes. The goal is not to finish everything; it is to make the next move clear.';
-  }
-
-  if (text.includes('sleep') || text.includes('tired') || text.includes('exhausted')) {
-    return 'Reduce stimulation for a little while and dim the lights. A calmer environment helps your nervous system signal that it is safe to rest.';
-  }
-
-  if (text.includes('sad') || text.includes('lonely') || text.includes('empty')) {
-    return 'Name one small comfort you can give yourself right now, even if it is tiny: water, a blanket, music, sunlight, or a text to someone you trust.';
-  }
-
-  return 'Put both feet on the ground, take one slow breath, and remind yourself: “I can handle this one step at a time.”';
+  return `I hear you: “${latestUserMessage.slice(0, 280)}”.${context} I don't want to assume what this means for you. What feels most important for me to understand about it?`;
 };
 
 const generateAiReply = async (userMessage = '', conversation = []) => {
-  const message = (userMessage || '').trim();
-
-  if (!message) {
-    return 'I am here with you. Tell me what is weighing on your mind, and we can handle it one small step at a time.';
-  }
+  const message = String(userMessage || '').trim();
+  if (!message) throw new Error('A message is required.');
 
   if (detectCrisis(message)) {
-    return `${crisisMessage} Right now, the safest next step is to tell someone you trust or contact a crisis line. Would you like help making a quick safety plan?`;
+    return { reply: `${crisisMessage} Are you in immediate danger right now?`, provider: 'safety-response' };
   }
 
   const provider = (process.env.AI_PROVIDER || 'fallback').toLowerCase();
   const useOllama = provider === 'ollama';
   const apiKey = process.env.OPENAI_API_KEY;
   if (!useOllama && !apiKey) {
-    const match = findDatasetMatch(message);
-    const response = match?.responses?.[0] || 'I am here with you. Tell me what feels most present right now, and we can take it one small step at a time.';
-    const followUp = match?.followUps?.[0] || buildGroundingStep(message);
-    return `${response} ${followUp}`;
+    return { reply: generateContextualFallback(message, conversation), provider: 'basic-fallback' };
   }
 
   const baseUrl = (process.env.OPENAI_BASE_URL || (useOllama ? 'http://127.0.0.1:11434/v1' : 'https://api.openai.com/v1')).replace(/\/$/, '');
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(useOllama ? {} : { Authorization: `Bearer ${apiKey}` })
-    },
-    body: JSON.stringify({
-      model: process.env.OLLAMA_MODEL || process.env.OPENAI_MODEL || 'llama3.2',
-      temperature: 0.7,
-      max_tokens: 500,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a warm, calm mental-health support companion. Listen carefully, reflect feelings, ask one useful follow-up question, and offer small practical coping steps. Do not diagnose, claim to be a therapist, prescribe medication, or pretend to know facts about the user. Encourage professional support when appropriate. If the user describes immediate danger or self-harm, tell them to contact emergency services or a local crisis line and a trusted person now.'
-        },
-        ...(conversation || []).slice(-10).map(item => ({
-          role: item.role === 'assistant' ? 'assistant' : 'user',
-          content: String(item.content || '').slice(0, 2000)
-        })),
-        { role: 'user', content: message }
-      ]
-    })
-  });
+  const model = getConfiguredModel(useOllama);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(useOllama ? {} : { Authorization: `Bearer ${apiKey}` })
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.35,
+        max_tokens: 450,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are Therabot, a supportive mental-wellbeing conversation companion, not a clinician. Respond to the specific details the user shared and use recent conversation context; do not give generic advice when a focused response is possible. Start by acknowledging their experience without exaggerating, diagnosing, or claiming certainty. Ask at most one concise, relevant question. Offer a practical suggestion only when it fits, and keep it optional. Do not invent facts, repeat canned scripts, prescribe medication, or imply that you replace professional care. For medical or clinical questions, be transparent about limits and encourage discussion with a qualified professional. If the user describes imminent self-harm or danger, prioritize immediate safety: encourage contacting local emergency services, a crisis service, and a trusted person nearby.'
+          },
+          ...(Array.isArray(conversation) ? conversation : []).slice(-8).map(item => ({
+            role: item.role === 'assistant' ? 'assistant' : 'user',
+            content: String(item.content || '').slice(0, 1500)
+          })),
+          { role: 'user', content: message.slice(0, 4000) }
+        ]
+      })
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) throw new Error(`AI provider returned ${response.status}`);
   const data = await response.json();
-  return data.choices?.[0]?.message?.content?.trim() || 'I am here with you. Could you tell me a little more about what you are feeling?';
+  const reply = data.choices?.[0]?.message?.content?.trim();
+  if (!reply) throw new Error('AI provider returned an empty response.');
+  return { reply, provider: model };
 };
 
 const generateFallbackClinicalNote = (transcript = [], patientName = 'the patient', doctorName = 'the clinician') => {
@@ -233,7 +129,7 @@ const generateClinicalNote = async (transcript = [], patientName = 'the patient'
       ...(useOllama ? {} : { Authorization: `Bearer ${apiKey}` })
     },
     body: JSON.stringify({
-      model: process.env.OLLAMA_MODEL || process.env.OPENAI_MODEL || 'llama3.2',
+      model: getConfiguredModel(useOllama),
       temperature: 0.2,
       max_tokens: 900,
       messages: [
@@ -253,7 +149,7 @@ const generateClinicalNote = async (transcript = [], patientName = 'the patient'
   const data = await response.json();
   const note = data.choices?.[0]?.message?.content?.trim();
   if (!note) throw new Error('The AI provider returned an empty clinical note.');
-  return { note, model: process.env.OLLAMA_MODEL || process.env.OPENAI_MODEL || 'llama3.2' };
+  return { note, model: getConfiguredModel(useOllama) };
 };
 
 router.post('/chat', async (req, res) => {
@@ -270,25 +166,26 @@ router.post('/chat', async (req, res) => {
     }).catch(() => null);
   }
 
-  let reply;
+  let generated;
   try {
-    reply = await generateAiReply(trimmedMessage, history);
+    generated = await generateAiReply(trimmedMessage, history);
   } catch (error) {
     console.error('AI provider request failed:', error.message);
-    reply = 'I could not reach the AI companion right now. Please try again shortly, or contact a trusted person or mental-health professional if you need immediate support.';
+    return res.status(503).json({ error: 'The AI companion is temporarily unavailable. Please try again shortly.' });
   }
 
   const aiMessage = {
     roomId: safeRoomId,
     author: 'AI Companion',
-    message: reply,
+    message: generated.reply,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   };
 
   await ChatMessage.create(aiMessage).catch(() => null);
 
   res.status(200).json({
-    reply,
+    reply: generated.reply,
+    provider: generated.provider,
     timestamp: new Date().toISOString(),
     riskDetected: detectCrisis(trimmedMessage)
   });
