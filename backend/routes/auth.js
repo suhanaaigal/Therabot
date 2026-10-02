@@ -2,6 +2,10 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const isValidPhoneNumber = phoneNumber => /^\d{10}$/.test(String(phoneNumber || '').trim());
 const isValidEmail = email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+const maskEmail = email => {
+  const [name, domain] = String(email || '').split('@');
+  return name && domain ? `${name.slice(0, 1)}***@${domain}` : '[invalid-email]';
+};
 const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
 const twilio = require('twilio');
@@ -134,31 +138,39 @@ router.post('/password-reset/request', async (req, res) => {
   try {
     const patient = await Patient.findOne({ email }).catch(() => null)
       || [...demoPatients.values()].find(item => String(item.email || '').toLowerCase() === email);
-    if (patient) {
-      const resetCode = crypto.randomInt(100000, 1000000).toString();
-      const resetHash = crypto.createHash('sha256').update(resetCode).digest('hex');
-      patient.passwordResetCodeHash = resetHash;
-      patient.passwordResetExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
-      await patient.save?.();
-      if (!patient.save) demoPatients.set(String(patient._id), patient);
-
-      const mailResponse = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: process.env.EMAIL_FROM,
-          to: [email],
-          subject: 'Your Therabot password reset code',
-          text: `Your Therabot password reset code is ${resetCode}. It expires in 15 minutes. If you did not request this, you can ignore this email.`
-        })
-      });
-      if (!mailResponse.ok) {
-        patient.passwordResetCodeHash = null;
-        patient.passwordResetExpiresAt = null;
-        await patient.save?.();
-        return res.status(502).json({ error: 'We could not send the recovery email. Please try again later.' });
-      }
+    if (!patient) {
+      console.info(`Password reset requested for an unknown account (${maskEmail(email)}). No email sent.`);
+      return res.status(200).json({ message: 'If an account exists for that email, a reset code has been sent.' });
     }
+
+    const resetCode = crypto.randomInt(100000, 1000000).toString();
+    const resetHash = crypto.createHash('sha256').update(resetCode).digest('hex');
+    patient.passwordResetCodeHash = resetHash;
+    patient.passwordResetExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    await patient.save?.();
+    if (!patient.save) demoPatients.set(String(patient._id), patient);
+
+    const mailResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM,
+        to: [email],
+        subject: 'Your Therabot password reset code',
+        text: `Your Therabot password reset code is ${resetCode}. It expires in 15 minutes. If you did not request this, you can ignore this email.`
+      })
+    });
+    if (!mailResponse.ok) {
+      const providerError = (await mailResponse.text()).slice(0, 500);
+      console.error(`Password reset email rejected by Resend (HTTP ${mailResponse.status}, ${maskEmail(email)}): ${providerError}`);
+      patient.passwordResetCodeHash = null;
+      patient.passwordResetExpiresAt = null;
+      await patient.save?.();
+      return res.status(502).json({ error: 'We could not send the recovery email. Check the backend logs or try again later.' });
+    }
+
+    const delivery = await mailResponse.json().catch(() => ({}));
+    console.info(`Password reset email accepted by Resend (${maskEmail(email)}, id: ${delivery.id || 'unknown'}).`);
 
     return res.status(200).json({ message: 'If an account exists for that email, a reset code has been sent.' });
   } catch (error) {

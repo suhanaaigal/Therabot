@@ -112,7 +112,8 @@ app.get('/health', (_req, res) => {
   const isHealthy = !isProduction || databaseConnected;
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? 'ok' : 'database_unavailable',
-    persistence: databaseConnected ? 'mongodb' : 'demo-memory'
+    persistence: databaseConnected ? 'mongodb' : 'demo-memory',
+    passwordRecoveryConfigured: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM)
   });
 });
 
