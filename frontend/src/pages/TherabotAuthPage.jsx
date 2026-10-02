@@ -14,7 +14,6 @@ export default function TherabotAuthPage({ role }) {
     event.preventDefault();
     setLoading(true);
     setError('');
-    setNotice('');
     try {
       if (isDoctor) {
         const response = await api.post('/api/auth/doctor-login', { username: form.username, password: form.password });
