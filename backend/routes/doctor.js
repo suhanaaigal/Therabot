@@ -7,8 +7,18 @@ const Appointment = require('../models/Appointment');
 const ChatMessage = require('../models/ChatMessage');
 const CallSession = require('../models/CallSession');
 const { demoPatients, demoCheckIns, demoAppointments, demoCallSessions, demoNotifications } = require('../demoStore');
+const { requireDoctorSession } = require('../doctorSession');
 
 const isDemoMode = () => mongoose.connection.readyState !== 1 || !process.env.MONGO_URI || !process.env.MONGO_URI.startsWith('mongodb');
+const sanitizePatient = patient => {
+  if (!patient) return patient;
+  const safePatient = patient.toObject ? patient.toObject() : { ...patient };
+  delete safePatient.password;
+  delete safePatient.otpCode;
+  delete safePatient.passwordResetCodeHash;
+  delete safePatient.passwordResetExpiresAt;
+  return safePatient;
+};
 
 const buildPatientReport = (patient, checkIns, appointments, aiMessages = []) => {
   const latest = checkIns[0] || {};
@@ -47,14 +57,15 @@ router.get('/patients', async (req, res) => {
   try {
     const patients = isDemoMode()
       ? [...new Map([...demoPatients.values()].map(patient => [String(patient._id || patient.fullName).toLowerCase(), patient])).values()]
-      : await Patient.find();
+      : await Patient.find().select('-password -otpCode -passwordResetCodeHash -passwordResetExpiresAt');
     const bandPriority = { 'Red': 1, 'Orange': 2, 'Yellow': 3, 'Green': 4 };
 
-    patients.sort((a, b) => {
+    const safePatients = patients.map(sanitizePatient);
+    safePatients.sort((a, b) => {
       return (bandPriority[a.currentRiskBand] || 5) - (bandPriority[b.currentRiskBand] || 5);
     });
 
-    res.status(200).json(patients);
+    res.status(200).json(safePatients);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -71,9 +82,9 @@ router.get('/patient/:id', async (req, res) => {
       const appointments = demoAppointments.filter(item => String(item.patientId) === String(patientId));
       const callSessions = demoCallSessions.filter(item => String(item.patientId) === String(patientId));
       const notifications = demoNotifications.filter(item => String(item.patientId) === String(patientId));
-      return res.status(200).json({ patient, checkIns, appointments, notifications, aiMessages: [], callSessions, report: buildPatientReport(patient, checkIns, appointments) });
+      return res.status(200).json({ patient: sanitizePatient(patient), checkIns, appointments, notifications, aiMessages: [], callSessions, report: buildPatientReport(patient, checkIns, appointments) });
     }
-    const patient = await Patient.findById(patientId);
+    const patient = await Patient.findById(patientId).select('-password -otpCode -passwordResetCodeHash -passwordResetExpiresAt');
     const checkIns = await DailyCheckIn.find({ patientId }).sort({ date: -1 });
     const appointments = await Appointment.find({ patientId }).sort({ createdAt: -1 });
     const notifications = await Notification.find({ patientId }).sort({ createdAt: -1 });
@@ -81,7 +92,7 @@ router.get('/patient/:id', async (req, res) => {
     const callSessions = await CallSession.find({ patientId }).sort({ createdAt: -1 });
     const report = buildPatientReport(patient, checkIns, appointments, aiMessages);
 
-    res.status(200).json({ patient, checkIns, appointments, notifications, aiMessages, callSessions, report });
+    res.status(200).json({ patient: sanitizePatient(patient), checkIns, appointments, notifications, aiMessages, callSessions, report });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -113,6 +124,44 @@ router.get('/patient/:id/report', async (req, res) => {
     res.status(200).json(report);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/patient/:id', requireDoctorSession, async (req, res) => {
+  const patientId = String(req.params.id);
+  try {
+    if (isDemoMode()) {
+      const patient = demoPatients.get(patientId) || [...demoPatients.values()].find(item => String(item._id) === patientId);
+      if (!patient) return res.status(404).json({ error: 'Patient not found.' });
+      for (const [key, item] of demoPatients.entries()) {
+        if (String(item._id) === patientId) demoPatients.delete(key);
+      }
+      demoCheckIns.delete(patientId);
+      const removeForPatient = items => {
+        for (let index = items.length - 1; index >= 0; index -= 1) {
+          if (String(items[index].patientId) === patientId) items.splice(index, 1);
+        }
+      };
+      removeForPatient(demoAppointments);
+      removeForPatient(demoCallSessions);
+      removeForPatient(demoNotifications);
+      return res.status(200).json({ message: 'Patient and associated records deleted.' });
+    }
+
+    const patient = await Patient.findById(patientId);
+    if (!patient) return res.status(404).json({ error: 'Patient not found.' });
+    await Promise.all([
+      DailyCheckIn.deleteMany({ patientId }),
+      Notification.deleteMany({ patientId }),
+      Appointment.deleteMany({ patientId }),
+      CallSession.deleteMany({ patientId }),
+      ChatMessage.deleteMany({ roomId: patientId }),
+      Patient.deleteOne({ _id: patientId })
+    ]);
+    return res.status(200).json({ message: 'Patient and associated records deleted.' });
+  } catch (error) {
+    console.error('Patient deletion failed:', error.message);
+    return res.status(500).json({ error: 'Could not delete the patient record.' });
   }
 });
 

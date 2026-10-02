@@ -11,3 +11,8 @@ const localDevelopmentBackendUrl = import.meta.env.DEV
 
 export const backendUrl = hostedBackendUrl || localDevelopmentBackendUrl;
 export const api = axios.create({ baseURL: backendUrl });
+api.interceptors.request.use(config => {
+	const doctorSessionToken = localStorage.getItem('doctorSessionToken');
+	if (doctorSessionToken) config.headers.Authorization = `Bearer ${doctorSessionToken}`;
+	return config;
+});

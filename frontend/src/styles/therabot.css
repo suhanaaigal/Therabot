@@ -119,6 +119,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .patient-table { width: 100%; border-collapse: collapse; min-width: 650px; }
 .patient-table th { padding: 11px 10px; border-bottom: 1px solid var(--line); color: #819087; font-size: 9px; text-align: left; text-transform: uppercase; }
 .patient-table td { padding: 13px 10px; border-bottom: 1px solid #edf1ed; color: #46574d; font-size: 11px; }
+.patient-directory-actions { display: flex; align-items: center; gap: 12px; }
+.delete-patient-button { min-height: 28px; padding: 0 9px; border: 1px solid #f0d5d0; border-radius: 4px; background: #fff8f6; color: #a34437; cursor: pointer; font-size: 10px; font-weight: 700; }
+.delete-patient-button:hover { background: #fbe9e5; }
 .patient-cell { display: flex; align-items: center; gap: 9px; color: var(--ink) !important; font-weight: 700; }
 .patient-cell .avatar-badge { width: 29px; height: 29px; font-size: 10px; }
 .appointment-card { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }

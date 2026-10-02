@@ -1,7 +1,6 @@
 import React from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/TherabotHomePage';
-import PatientRegister from './pages/PatientRegister';
 import PatientDashboard from './pages/TherabotPatientDashboard';
 import DoctorDashboard from './pages/TherabotDoctorDashboard';
 import TherabotAuthPage from './pages/TherabotAuthPage';
@@ -14,7 +13,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/patient" element={<TherabotAuthPage role="patient" />} />
-        <Route path="/register" element={<PatientRegister />} />
+        <Route path="/register" element={<Navigate to="/patient" replace />} />
         <Route path="/dashboard" element={<PatientDashboard />} />
         <Route path="/doctor" element={<TherabotAuthPage role="doctor" />} />
         <Route path="/doctor-dashboard" element={<DoctorDashboard />} />

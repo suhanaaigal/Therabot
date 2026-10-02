@@ -108,6 +108,23 @@ export default function TherabotDoctorDashboard() {
     catch (error) { window.alert(error?.response?.data?.error || 'Unable to decline appointment.'); }
   }
 
+  async function deletePatient(patient) {
+    const confirmed = window.confirm(`Permanently delete ${patient.fullName}'s account and all associated check-ins, appointments, messages, and reports? This cannot be undone.`);
+    if (!confirmed) return;
+    try {
+      await api.delete(`/api/doctor/patient/${encodeURIComponent(patient._id)}`);
+      if (String(selectedPatientIdRef.current) === String(patient._id)) {
+        selectedPatientIdRef.current = null;
+        setSelectedPatient(null);
+        setPatientSessions([]);
+        setActiveSection('patients');
+      }
+      await refreshAll();
+    } catch (error) {
+      window.alert(error?.response?.data?.error || 'Could not delete the patient account.');
+    }
+  }
+
   async function saveTranscript(event) {
     event.preventDefault();
     if (!selectedSession || !transcriptText.trim()) return;
@@ -170,7 +187,7 @@ export default function TherabotDoctorDashboard() {
 
   const content = activeSection === 'patient-report' && selectedPatient
     ? <PatientRecord {...{ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, newConsultation, setNewConsultation, scheduleConsultation, downloadPatientReport, goBack: () => { setSelectedPatient(null); setActiveSection('patients'); } }} />
-    : activeSection === 'patients' ? <PatientDirectory patients={visiblePatients} search={search} setSearch={setSearch} inspectPatient={inspectPatient} />
+    : activeSection === 'patients' ? <PatientDirectory patients={visiblePatients} search={search} setSearch={setSearch} inspectPatient={inspectPatient} deletePatient={deletePatient} />
       : activeSection === 'appointments' ? <AppointmentView requests={requests} appointments={appointments} approve={approveAppointment} decline={declineAppointment} doctorName={doctorName} />
         : activeSection === 'alerts' ? <AlertView notifications={notifications} />
           : <Overview {...{ patients: sortedPatients, upcomingCalls, requests, notifications, inspectPatient, setActiveSection, refreshAll, approve: approveAppointment, decline: declineAppointment, doctorName }} />;
@@ -218,9 +235,9 @@ function Metric({ label, value, foot, tone = '', icon }) {
   return <div className={`metric-card ${tone}`}><span className="metric-icon">{icon}</span><span className="metric-label">{label}</span><strong className="metric-value">{value}</strong><span className="metric-foot">{foot}</span></div>;
 }
 
-function PatientDirectory({ patients, search, setSearch, inspectPatient }) {
+function PatientDirectory({ patients, search, setSearch, inspectPatient, deletePatient }) {
   return <section className="panel panel-pad"><div className="panel-head directory-head"><div><h2 className="panel-title">All patients <span className="count-badge">{patients.length}</span></h2><p className="panel-caption">Select a patient to view their complete history.</p></div><label className="search-field"><span aria-hidden="true">⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Find a patient" aria-label="Search patients" /></label></div>
-    {patients.length ? <div className="table-wrap"><table className="patient-table"><thead><tr><th>Patient</th><th>Risk band</th><th>Age / gender</th><th>Phone</th><th>Emergency contact</th><th /></tr></thead><tbody>{patients.map(patient => <tr key={patient._id}><td><div className="patient-cell"><span className="avatar-badge">{initials(patient.fullName)}</span>{patient.fullName || 'Unnamed patient'}</div></td><td><span className={`risk-badge ${riskClass(patient.currentRiskBand)}`}>{patient.currentRiskBand || 'Green'}</span></td><td>{patient.age || '—'} · {patient.gender || '—'}</td><td>{patient.phoneNumber || '—'}</td><td>{patient.emergencyContact || '—'}</td><td><button className="text-action" type="button" onClick={() => inspectPatient(patient._id)}>View record →</button></td></tr>)}</tbody></table></div> : <div className="empty-state">No matching patients found.</div>}
+    {patients.length ? <div className="table-wrap"><table className="patient-table"><thead><tr><th>Patient</th><th>Risk band</th><th>Age / gender</th><th>Phone</th><th>Emergency contact</th><th>Actions</th></tr></thead><tbody>{patients.map(patient => <tr key={patient._id}><td><div className="patient-cell"><span className="avatar-badge">{initials(patient.fullName)}</span>{patient.fullName || 'Unnamed patient'}</div></td><td><span className={`risk-badge ${riskClass(patient.currentRiskBand)}`}>{patient.currentRiskBand || 'Green'}</span></td><td>{patient.age || '—'} · {patient.gender || '—'}</td><td>{patient.phoneNumber || '—'}</td><td>{patient.emergencyContact || '—'}</td><td><div className="patient-directory-actions"><button className="text-action" type="button" onClick={() => inspectPatient(patient._id)}>View record →</button><button className="delete-patient-button" type="button" onClick={() => deletePatient(patient)} aria-label={`Delete ${patient.fullName}`}>Delete</button></div></td></tr>)}</tbody></table></div> : <div className="empty-state">No matching patients found.</div>}
   </section>;
 }
 

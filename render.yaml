@@ -9,6 +9,8 @@ services:
         value: production
       - key: MONGO_URI
         sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
 
   - type: web
     name: mental-health-frontend
@@ -26,3 +28,7 @@ services:
           type: web
           name: mental-health-backend
           property: host
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_PROJECT_ID
+        sync: false

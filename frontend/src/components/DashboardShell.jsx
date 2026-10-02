@@ -8,6 +8,7 @@ export default function DashboardShell({ role, name, active, onNavigate, items, 
   const signOut = () => {
     if (role === 'Doctor') {
       localStorage.removeItem('isDoctorAuthenticated');
+      localStorage.removeItem('doctorSessionToken');
       navigate('/doctor');
       return;
     }

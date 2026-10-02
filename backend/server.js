@@ -113,7 +113,7 @@ app.get('/health', (_req, res) => {
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? 'ok' : 'database_unavailable',
     persistence: databaseConnected ? 'mongodb' : 'demo-memory',
-    passwordRecoveryConfigured: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM)
+    firebaseAuthConfigured: Boolean(process.env.FIREBASE_PROJECT_ID)
   });
 });
 

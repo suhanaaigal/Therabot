@@ -11,16 +11,24 @@
 - Environment variables:
   - NODE_ENV=production
   - MONGO_URI
+  - FIREBASE_PROJECT_ID (same project used by frontend)
   - FRONTEND_URL
   - AI_PROVIDER=openai
   - OPENAI_API_KEY (set privately in Render; do not commit it)
   - OPENAI_MODEL=gpt-4o-mini
-  - RESEND_API_KEY (set privately in Render for password recovery)
-  - EMAIL_FROM (a sender address verified with Resend)
 
 The AI companion uses a context-aware basic fallback when no model provider is configured. For model-generated replies, set a valid provider and credentials on the backend service. To use Ollama instead, set `AI_PROVIDER=ollama`, `OLLAMA_MODEL`, and `OPENAI_BASE_URL` to the Ollama OpenAI-compatible endpoint.
 
-Patient password recovery sends a six-digit, 15-minute reset code through Resend. Configure `RESEND_API_KEY` and a verified `EMAIL_FROM` on the backend service before enabling the recovery workflow.
+Patient authentication and password reset use Firebase Authentication:
+
+- Create a Firebase project, then in **Authentication → Sign-in method** enable **Email/Password**.
+- In **Project settings → General**, register a Web app and copy its Web API key and Project ID.
+- Add the deployed frontend hostname (for example, `therabot-frontend.onrender.com`) to **Authentication → Settings → Authorized domains**.
+- Set `VITE_FIREBASE_API_KEY` and `VITE_FIREBASE_PROJECT_ID` on the Render frontend, plus the matching `FIREBASE_PROJECT_ID` on the backend. Redeploy both services after setting these values.
+- Firebase sends password reset links through its own email action handler; no Resend key, SMTP password, Twilio trial, or custom sending domain is required.
+- Existing MongoDB patient accounts with an email address are linked to Firebase on their first successful legacy sign-in; after linking, the old plaintext password is cleared from the patient record.
+
+Patient accounts use private credentials. Doctors cannot view patient passwords.
 
 ## 2. Frontend on Vercel
 
@@ -30,6 +38,8 @@ Patient password recovery sends a six-digit, 15-minute reset code through Resend
 - Output Directory: dist
 - Environment variable:
   - VITE_API_URL=https://your-render-backend-url
+  - VITE_FIREBASE_API_KEY
+  - VITE_FIREBASE_PROJECT_ID
 
 ## 3. MongoDB
 
