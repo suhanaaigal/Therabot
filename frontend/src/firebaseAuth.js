@@ -28,8 +28,8 @@ const firebaseRequest = async (method, body) => {
       WEAK_PASSWORD: 'Choose a password with at least 6 characters.',
       INVALID_EMAIL: 'Enter a valid email address.',
       USER_DISABLED: 'This account has been disabled. Contact the care team.',
-      TOO_MANY_ATTEMPTS_TRY_LATER: 'Too many attempts. Wait a while and try again.',
-      RESET_PASSWORD_EXCEED_LIMIT: 'Too many reset requests. Wait before trying again.',
+      TOO_MANY_ATTEMPTS_TRY_LATER: 'Email or password is incorrect. Please try again.',
+      RESET_PASSWORD_EXCEED_LIMIT: 'Please try again in a little while.',
       OPERATION_NOT_ALLOWED: 'Email and password sign-in is not enabled in Firebase Authentication.'
     };
     const error = new Error(messages[code] || `Firebase Authentication error: ${code}`);
