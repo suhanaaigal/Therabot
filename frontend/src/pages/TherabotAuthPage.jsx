@@ -69,14 +69,26 @@ export default function TherabotAuthPage({ role }) {
 
       const pendingKey = `therabot-pending-profile:${form.email.toLowerCase()}`;
       const pendingProfile = JSON.parse(localStorage.getItem(pendingKey) || '{}');
+      const profileDetails = mode === 'complete' ? {
+        fullName: form.fullName,
+        age: Number(form.age),
+        gender: form.gender,
+        phoneNumber: form.phoneNumber,
+        emergencyContact: form.emergencyContact
+      } : pendingProfile;
       let profile;
       try {
-        profile = await linkFirebasePatientProfile(firebaseUser.idToken, pendingProfile);
+        profile = await linkFirebasePatientProfile(firebaseUser.idToken, profileDetails);
       } catch (profileError) {
         if (profileError.message.includes('Verify your email')) {
           await sendFirebaseEmailVerification(firebaseUser.idToken);
           setNotice('Your email is not verified yet. We sent another verification link; open it, then sign in again.');
           setForm(current => ({ ...current, password: '' }));
+          return;
+        }
+        if (mode === 'existing' && profileError.message.includes('Patient profile details are required')) {
+          setMode('complete');
+          setNotice('Your sign-in worked, but your patient profile is missing. Enter your details below to restore it.');
           return;
         }
         throw profileError;
@@ -103,14 +115,14 @@ export default function TherabotAuthPage({ role }) {
       </aside>
       <section className="auth-form-side"><div className="auth-form-wrap">
         <p className="page-eyebrow">{isDoctor ? 'Clinician workspace' : 'Patient space'}</p>
-        <h2>{isDoctor ? 'Welcome back' : mode === 'new' ? 'Create your space' : mode === 'forgot' ? 'Recover your account' : 'Welcome back'}</h2>
-        <p>{isDoctor ? 'Sign in to review your care workspace.' : mode === 'new' ? 'A few details to get your wellbeing space ready.' : mode === 'forgot' ? 'Firebase will email a secure link to choose a new password.' : 'Sign in to continue your wellbeing journey.'}</p>
-        {!isDoctor && mode !== 'forgot' && <div className="auth-toggle"><button className={mode === 'new' ? 'is-active' : ''} type="button" onClick={() => { setMode('new'); setError(''); setNotice(''); setResetSent(false); }}>New patient</button><button className={mode === 'existing' ? 'is-active' : ''} type="button" onClick={() => { setMode('existing'); setError(''); setNotice(''); setResetSent(false); }}>Returning</button></div>}
+        <h2>{isDoctor ? 'Welcome back' : mode === 'new' ? 'Create your space' : mode === 'complete' ? 'Restore your patient profile' : mode === 'forgot' ? 'Recover your account' : 'Welcome back'}</h2>
+        <p>{isDoctor ? 'Sign in to review your care workspace.' : mode === 'new' ? 'A few details to get your wellbeing space ready.' : mode === 'complete' ? 'Your sign-in is ready. Add your details to reconnect your care profile.' : mode === 'forgot' ? 'Firebase will email a secure link to choose a new password.' : 'Sign in to continue your wellbeing journey.'}</p>
+        {!isDoctor && ['new', 'existing'].includes(mode) && <div className="auth-toggle"><button className={mode === 'new' ? 'is-active' : ''} type="button" onClick={() => { setMode('new'); setError(''); setNotice(''); setResetSent(false); }}>New patient</button><button className={mode === 'existing' ? 'is-active' : ''} type="button" onClick={() => { setMode('existing'); setError(''); setNotice(''); setResetSent(false); }}>Returning</button></div>}
         <form className="auth-fields" onSubmit={handleSubmit}>
           {isDoctor ? <div className="form-field"><label htmlFor="doctor-user">Username</label><input id="doctor-user" autoComplete="username" value={form.username} onChange={event => setForm({ ...form, username: event.target.value })} required /></div>
             : <div className="form-field"><label htmlFor="patient-email">Email address</label><input id="patient-email" type="email" autoComplete="email" placeholder="you@example.com" value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} required /></div>}
-          {!isDoctor && mode === 'new' && <div className="form-field"><label htmlFor="patient-name">Full name</label><input id="patient-name" autoComplete="name" placeholder="Your name" value={form.fullName} onChange={event => setForm({ ...form, fullName: event.target.value })} required /></div>}
-          {!isDoctor && mode === 'new' && <>
+          {!isDoctor && ['new', 'complete'].includes(mode) && <div className="form-field"><label htmlFor="patient-name">Full name</label><input id="patient-name" autoComplete="name" placeholder="Your name" value={form.fullName} onChange={event => setForm({ ...form, fullName: event.target.value })} required /></div>}
+          {!isDoctor && ['new', 'complete'].includes(mode) && <>
             <div className="form-grid"><div className="form-field"><label htmlFor="patient-age">Age</label><input id="patient-age" type="number" min="1" max="120" placeholder="Age" value={form.age} onChange={event => setForm({ ...form, age: event.target.value })} required /></div><div className="form-field"><label htmlFor="patient-gender">Gender</label><select id="patient-gender" value={form.gender} onChange={event => setForm({ ...form, gender: event.target.value })} required><option value="">Select</option><option>Female</option><option>Male</option><option>Other</option><option>Prefer not to say</option></select></div></div>
             <div className="form-field"><label htmlFor="patient-phone">Phone number</label><input id="patient-phone" type="tel" autoComplete="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} title="Enter exactly 10 digits." placeholder="10-digit phone number" value={form.phoneNumber} onChange={event => setForm({ ...form, phoneNumber: event.target.value.replace(/\D/g, '').slice(0, 10) })} required /></div>
             <div className="form-field"><label htmlFor="patient-emergency">Emergency contact</label><input id="patient-emergency" placeholder="Contact name or number" value={form.emergencyContact} onChange={event => setForm({ ...form, emergencyContact: event.target.value })} required /></div>
@@ -119,7 +131,7 @@ export default function TherabotAuthPage({ role }) {
           {error && <div className="auth-error" role="alert">{error}</div>}
           {notice && <div className="success-banner" role="status">{notice}</div>}
           {resetSent && <div className="success-banner" role="status">If a Firebase account exists for this email, a reset link has been sent. Open it to choose a new password.</div>}
-          <button className="action-button auth-submit" disabled={loading || (mode === 'forgot' && resetSent)} type="submit">{loading ? 'Please wait…' : isDoctor ? 'Open clinician workspace →' : mode === 'forgot' ? 'Send reset link →' : mode === 'new' ? 'Create patient space →' : 'Sign in →'}</button>
+          <button className="action-button auth-submit" disabled={loading || (mode === 'forgot' && resetSent)} type="submit">{loading ? 'Please wait…' : isDoctor ? 'Open clinician workspace →' : mode === 'forgot' ? 'Send reset link →' : mode === 'new' ? 'Create patient space →' : mode === 'complete' ? 'Restore patient profile →' : 'Sign in →'}</button>
         </form>
         {!isDoctor && mode === 'existing' && <button className="auth-home-link forgot-link" type="button" onClick={() => { setMode('forgot'); setError(''); setResetSent(false); }}>Forgot password?</button>}
         {!isDoctor && mode === 'forgot' && <button className="auth-home-link forgot-link" type="button" onClick={() => { setMode('existing'); setError(''); setResetSent(false); }}>Back to sign in</button>}
