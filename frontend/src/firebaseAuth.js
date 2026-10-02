@@ -23,12 +23,12 @@ const firebaseRequest = async (method, body) => {
     const messages = {
       EMAIL_EXISTS: 'An account with this email already exists. Choose Returning to sign in.',
       EMAIL_NOT_FOUND: 'No Firebase account exists for this email yet.',
-      INVALID_LOGIN_CREDENTIALS: 'Email or password is incorrect.',
+      INVALID_LOGIN_CREDENTIALS: 'We could not verify this email and password. Check your sign-in details; if they are correct, contact the care team to check your account.',
       INVALID_PASSWORD: 'Password is incorrect.',
       WEAK_PASSWORD: 'Choose a password with at least 6 characters.',
       INVALID_EMAIL: 'Enter a valid email address.',
       USER_DISABLED: 'This account has been disabled. Contact the care team.',
-      TOO_MANY_ATTEMPTS_TRY_LATER: 'Email or password is incorrect. Please try again.',
+      TOO_MANY_ATTEMPTS_TRY_LATER: 'There have been too many sign-in attempts. Wait a while, then try again.',
       RESET_PASSWORD_EXCEED_LIMIT: 'Please try again in a little while.',
       OPERATION_NOT_ALLOWED: 'Email and password sign-in is not enabled in Firebase Authentication.'
     };

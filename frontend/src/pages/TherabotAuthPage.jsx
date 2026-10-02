@@ -58,7 +58,12 @@ export default function TherabotAuthPage({ role }) {
           firebaseUser = await firebaseSignIn(form.email, form.password);
         } catch (firebaseError) {
           if (!['EMAIL_NOT_FOUND', 'INVALID_LOGIN_CREDENTIALS'].includes(firebaseError.code)) throw firebaseError;
-          await api.post('/api/auth/login', { email: form.email, password: form.password });
+          try {
+            await api.post('/api/auth/login', { email: form.email, password: form.password });
+          } catch (legacyError) {
+            if ([401, 404].includes(legacyError?.response?.status)) throw firebaseError;
+            throw legacyError;
+          }
           firebaseUser = await firebaseSignUp(form.email, form.password);
           await sendFirebaseEmailVerification(firebaseUser.idToken);
           setForm(current => ({ ...current, password: '' }));
