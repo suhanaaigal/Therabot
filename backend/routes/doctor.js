@@ -53,7 +53,7 @@ const buildPatientReport = (patient, checkIns, appointments, aiMessages = []) =>
 };
 
 // Get all patients sorted by priority (Red -> Orange -> Yellow -> Green)
-router.get('/patients', async (req, res) => {
+router.get('/patients', requireDoctorSession, async (req, res) => {
   try {
     const patients = isDemoMode()
       ? [...new Map([...demoPatients.values()].map(patient => [String(patient._id || patient.fullName).toLowerCase(), patient])).values()]
@@ -72,7 +72,7 @@ router.get('/patients', async (req, res) => {
 });
 
 // Get a specific patient's profile and check-in history
-router.get('/patient/:id', async (req, res) => {
+router.get('/patient/:id', requireDoctorSession, async (req, res) => {
   try {
     const patientId = req.params.id;
     if (isDemoMode()) {
@@ -98,7 +98,7 @@ router.get('/patient/:id', async (req, res) => {
   }
 });
 
-router.get('/notifications', async (req, res) => {
+router.get('/notifications', requireDoctorSession, async (req, res) => {
   try {
     const notifications = await Notification.find().sort({ createdAt: -1 });
     res.status(200).json(notifications);
@@ -107,7 +107,7 @@ router.get('/notifications', async (req, res) => {
   }
 });
 
-router.get('/patient/:id/report', async (req, res) => {
+router.get('/patient/:id/report', requireDoctorSession, async (req, res) => {
   try {
     const patientId = req.params.id;
     if (isDemoMode()) {
