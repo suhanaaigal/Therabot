@@ -154,6 +154,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .request-item { display: grid; gap: 10px; padding: 13px 0; border-bottom: 1px solid #edf1ed; }
 .request-item:last-child { border: 0; }
 .appointment-actions { align-items: center; }
+.doctor-booking-form { padding: 18px 0; margin-bottom: 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .tiny-action { min-height: 29px; padding: 0 10px; border: 0; border-radius: 4px; background: var(--forest); color: white; cursor: pointer; font-size: 10px; font-weight: 700; }
 .tiny-action.quiet { border: 1px solid var(--line); background: white; color: #5c6a61; }
 .text-action { padding: 4px 0; border: 0; background: transparent; color: var(--forest); cursor: pointer; font-size: 10px; font-weight: 700; white-space: nowrap; }

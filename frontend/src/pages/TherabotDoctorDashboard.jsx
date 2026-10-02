@@ -188,7 +188,7 @@ export default function TherabotDoctorDashboard() {
   const content = activeSection === 'patient-report' && selectedPatient
     ? <PatientRecord {...{ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, newConsultation, setNewConsultation, scheduleConsultation, downloadPatientReport, goBack: () => { setSelectedPatient(null); setActiveSection('patients'); } }} />
     : activeSection === 'patients' ? <PatientDirectory patients={visiblePatients} search={search} setSearch={setSearch} inspectPatient={inspectPatient} deletePatient={deletePatient} />
-      : activeSection === 'appointments' ? <AppointmentView requests={requests} appointments={appointments} approve={approveAppointment} decline={declineAppointment} doctorName={doctorName} />
+      : activeSection === 'appointments' ? <AppointmentView patients={patients} requests={requests} appointments={appointments} approve={approveAppointment} decline={declineAppointment} doctorId={localStorage.getItem('doctorAuthId') || localStorage.getItem('doctorId')} doctorName={doctorName} onBooked={refreshAll} />
         : activeSection === 'alerts' ? <AlertView notifications={notifications} />
           : <Overview {...{ patients: sortedPatients, upcomingCalls, requests, notifications, inspectPatient, setActiveSection, refreshAll, approve: approveAppointment, decline: declineAppointment, doctorName }} />;
 
@@ -241,10 +241,59 @@ function PatientDirectory({ patients, search, setSearch, inspectPatient, deleteP
   </section>;
 }
 
-function AppointmentView({ requests, appointments, approve, decline, doctorName }) {
+function AppointmentView({ patients, requests, appointments, approve, decline, doctorId, doctorName, onBooked }) {
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [booking, setBooking] = useState({ patientId: '', scheduledDate: '', scheduledTime: '' });
+  const [bookingError, setBookingError] = useState('');
+  const [bookingLoading, setBookingLoading] = useState(false);
   const pending = requests.filter(item => item.status === 'Pending');
   const approved = [...appointments, ...requests].filter(item => item.status === 'Approved' && item.roomUrl).filter((item, index, all) => all.findIndex(other => String(other._id) === String(item._id)) === index);
-  return <div className="dash-section"><section className="panel panel-pad"><div className="panel-head"><div><h2 className="panel-title">Needs your response</h2><p className="panel-caption">Appointment requests waiting for review.</p></div><span className="count-badge">{pending.length}</span></div>{pending.length ? <div className="data-list">{pending.map(item => <div className="appointment-card" key={item._id}><div className="data-main"><strong>{item.patientName || 'Patient'}</strong><small>{item.scheduledDate} at {item.scheduledTime} · {item.urgency || 'Routine'}{item.isAvailable === false ? ' · Time conflict' : ''}</small></div><div className="appointment-actions"><button className="action-button" type="button" onClick={() => approve(item._id)}>Accept</button><button className="quiet-button" type="button" onClick={() => decline(item._id)}>Decline</button></div></div>)}</div> : <div className="empty-state">No pending appointment requests.</div>}</section><section className="panel panel-pad"><div className="panel-head"><div><h2 className="panel-title">Approved consultations</h2><p className="panel-caption">Call rooms for upcoming appointments.</p></div></div><AppointmentList items={approved} doctorName={doctorName} /></section></div>;
+  async function submitBooking(event) {
+    event.preventDefault();
+    const patient = patients.find(item => String(item._id) === String(booking.patientId));
+    if (!patient) {
+      setBookingError('Select a patient before booking.');
+      return;
+    }
+    setBookingError('');
+    setBookingLoading(true);
+    try {
+      await api.post('/api/appointment/book', {
+        patientId: patient._id,
+        patientName: patient.fullName,
+        doctorId,
+        doctorName,
+        scheduledDate: booking.scheduledDate,
+        scheduledTime: booking.scheduledTime
+      });
+      setBooking({ patientId: '', scheduledDate: '', scheduledTime: '' });
+      setBookingOpen(false);
+      await onBooked();
+    } catch (error) {
+      setBookingError(error?.response?.data?.error || 'Could not book this appointment. Please try again.');
+    } finally {
+      setBookingLoading(false);
+    }
+  }
+
+  return <div className="dash-section">
+    <section className="panel panel-pad">
+      <div className="panel-head"><div><h2 className="panel-title">Appointments</h2><p className="panel-caption">Book a visit for a patient or respond to incoming appointment requests.</p></div><button className="action-button" type="button" onClick={() => { setBookingOpen(value => !value); setBookingError(''); }}>{bookingOpen ? 'Cancel booking' : 'Book appointment +'}</button></div>
+      {bookingOpen && <form className="doctor-booking-form" onSubmit={submitBooking}>
+        <div className="panel-head"><div><h3 className="panel-title">New appointment</h3><p className="panel-caption">Choose a patient and a time for the consultation.</p></div></div>
+        <div className="form-grid">
+          <div className="form-field full"><label htmlFor="doctor-book-patient">Patient</label><select id="doctor-book-patient" value={booking.patientId} onChange={event => setBooking(current => ({ ...current, patientId: event.target.value }))} required><option value="">Select a patient</option>{patients.map(patient => <option key={patient._id} value={patient._id}>{patient.fullName}{patient.email ? ` · ${patient.email}` : ''}</option>)}</select></div>
+          <div className="form-field"><label htmlFor="doctor-book-date">Date</label><input id="doctor-book-date" type="date" min={new Date().toISOString().slice(0, 10)} value={booking.scheduledDate} onChange={event => setBooking(current => ({ ...current, scheduledDate: event.target.value }))} required /></div>
+          <div className="form-field"><label htmlFor="doctor-book-time">Time</label><input id="doctor-book-time" type="time" value={booking.scheduledTime} onChange={event => setBooking(current => ({ ...current, scheduledTime: event.target.value }))} required /></div>
+        </div>
+        {bookingError && <div className="auth-error" role="alert">{bookingError}</div>}
+        <div className="form-actions"><button className="action-button" type="submit" disabled={bookingLoading}>{bookingLoading ? 'Booking…' : 'Confirm appointment'}</button></div>
+      </form>}
+      <div className="panel-head"><div><h3 className="panel-title">Needs your response</h3><p className="panel-caption">Appointment requests waiting for review.</p></div><span className="count-badge">{pending.length}</span></div>
+      {pending.length ? <div className="data-list">{pending.map(item => <div className="appointment-card" key={item._id}><div className="data-main"><strong>{item.patientName || 'Patient'}</strong><small>{item.scheduledDate} at {item.scheduledTime} · {item.urgency || 'Routine'}{item.isAvailable === false ? ' · Time conflict' : ''}</small></div><div className="appointment-actions"><button className="action-button" type="button" onClick={() => approve(item._id)}>Accept</button><button className="quiet-button" type="button" onClick={() => decline(item._id)}>Decline</button></div></div>)}</div> : <div className="empty-state">No pending appointment requests.</div>}
+    </section>
+    <section className="panel panel-pad"><div className="panel-head"><div><h2 className="panel-title">Approved consultations</h2><p className="panel-caption">Call rooms for upcoming appointments.</p></div></div><AppointmentList items={approved} doctorName={doctorName} /></section>
+  </div>;
 }
 
 function AppointmentList({ items, doctorName }) {
