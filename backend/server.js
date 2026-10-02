@@ -112,8 +112,7 @@ app.get('/health', (_req, res) => {
   const isHealthy = !isProduction || databaseConnected;
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? 'ok' : 'database_unavailable',
-    persistence: databaseConnected ? 'mongodb' : 'demo-memory',
-    firebaseAuthConfigured: Boolean(process.env.FIREBASE_PROJECT_ID)
+    persistence: databaseConnected ? 'mongodb' : 'demo-memory'
   });
 });
 
