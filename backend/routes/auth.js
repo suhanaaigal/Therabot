@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const mongoose = require('mongoose');
+const crypto = require('node:crypto');
 const { signDoctorSession } = require('../doctorSession');
 const { hashPatientPassword, verifyPatientPassword } = require('../patientPassword');
 const Patient = require('../models/Patient');
@@ -116,6 +117,53 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     console.error('Patient login failed:', err.message);
     return res.status(500).json({ error: 'Could not sign in. Please try again.' });
+  }
+});
+
+router.post('/password-reset', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const recoveryCode = String(req.body?.recoveryCode || '').trim();
+    const newPassword = req.body?.newPassword;
+    if (!email || !recoveryCode || typeof newPassword !== 'string') {
+      return res.status(400).json({ error: 'Email, recovery code, and new password are required.' });
+    }
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      return res.status(400).json({ error: 'Choose a password between 8 and 128 characters.' });
+    }
+
+    const recoveryCodeHash = crypto.createHash('sha256').update(recoveryCode).digest('hex');
+    const passwordHash = await hashPatientPassword(newPassword);
+    if (mongoose.connection.readyState === 1) {
+      const updatedPatient = await Patient.findOneAndUpdate({
+        email,
+        passwordResetCodeHash: recoveryCodeHash,
+        passwordResetExpiresAt: { $gt: new Date() }
+      }, {
+        $set: { password: passwordHash, passwordResetCodeHash: '', passwordResetExpiresAt: null }
+      }, { new: true }).select('_id');
+      if (!updatedPatient) {
+        return res.status(400).json({ error: 'Recovery code is invalid or expired. Ask your care team for a new code.' });
+      }
+    } else {
+      const patient = findDemoPatientByEmail(email);
+      const submittedHash = Buffer.from(recoveryCodeHash, 'hex');
+      const storedHashText = String(patient?.passwordResetCodeHash || '');
+      const storedHash = /^[a-f\d]{64}$/i.test(storedHashText) ? Buffer.from(storedHashText, 'hex') : Buffer.alloc(32);
+      const codeMatches = crypto.timingSafeEqual(submittedHash, storedHash) && Boolean(storedHashText);
+      const codeIsCurrent = patient?.passwordResetExpiresAt && new Date(patient.passwordResetExpiresAt).getTime() > Date.now();
+      if (!patient || !codeMatches || !codeIsCurrent) {
+        return res.status(400).json({ error: 'Recovery code is invalid or expired. Ask your care team for a new code.' });
+      }
+      patient.password = passwordHash;
+      patient.passwordResetCodeHash = '';
+      patient.passwordResetExpiresAt = null;
+      await savePatient(patient);
+    }
+    return res.status(200).json({ message: 'Password updated. You can now sign in with your new password.' });
+  } catch (error) {
+    console.error('Patient password reset failed:', error.message);
+    return res.status(500).json({ error: 'Could not update your password. Please try again.' });
   }
 });
 

@@ -8,12 +8,14 @@ export default function TherabotAuthPage({ role }) {
   const [mode, setMode] = useState('new');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ fullName: '', username: 'doctor', email: '', phoneNumber: '', age: '', gender: '', emergencyContact: '', password: isDoctor ? 'doctor123' : '' });
+  const [notice, setNotice] = useState('');
+  const [form, setForm] = useState({ fullName: '', username: 'doctor', email: '', recoveryCode: '', phoneNumber: '', age: '', gender: '', emergencyContact: '', password: isDoctor ? 'doctor123' : '' });
 
   async function handleSubmit(event) {
     event.preventDefault();
     setLoading(true);
     setError('');
+    setNotice('');
     try {
       if (isDoctor) {
         const response = await api.post('/api/auth/doctor-login', { username: form.username, password: form.password });
@@ -24,6 +26,18 @@ export default function TherabotAuthPage({ role }) {
         localStorage.setItem('doctorSessionToken', response.data.doctorSessionToken || '');
         localStorage.setItem('isDoctorAuthenticated', 'true');
         navigate('/doctor-dashboard');
+        return;
+      }
+
+      if (mode === 'recover') {
+        await api.post('/api/auth/password-reset', {
+          email: form.email,
+          recoveryCode: form.recoveryCode,
+          newPassword: form.password
+        });
+        setMode('existing');
+        setForm(current => ({ ...current, recoveryCode: '', password: '' }));
+        setNotice('Password updated. Sign in with your new password.');
         return;
       }
 
@@ -58,22 +72,26 @@ export default function TherabotAuthPage({ role }) {
       </aside>
       <section className="auth-form-side"><div className="auth-form-wrap">
         <p className="page-eyebrow">{isDoctor ? 'Clinician workspace' : 'Patient space'}</p>
-        <h2>{isDoctor ? 'Welcome back' : mode === 'new' ? 'Create your space' : 'Welcome back'}</h2>
-        <p>{isDoctor ? 'Sign in to review your care workspace.' : mode === 'new' ? 'A few details to get your wellbeing space ready.' : 'Sign in to continue your wellbeing journey.'}</p>
-        {!isDoctor && <div className="auth-toggle"><button className={mode === 'new' ? 'is-active' : ''} type="button" onClick={() => { setMode('new'); setError(''); }}>New patient</button><button className={mode === 'existing' ? 'is-active' : ''} type="button" onClick={() => { setMode('existing'); setError(''); }}>Returning</button></div>}
+        <h2>{isDoctor ? 'Welcome back' : mode === 'new' ? 'Create your space' : mode === 'recover' ? 'Set a new password' : 'Welcome back'}</h2>
+        <p>{isDoctor ? 'Sign in to review your care workspace.' : mode === 'new' ? 'A few details to get your wellbeing space ready.' : mode === 'recover' ? 'Enter the one-time recovery code provided by your care team.' : 'Sign in to continue your wellbeing journey.'}</p>
+        {!isDoctor && ['new', 'existing'].includes(mode) && <div className="auth-toggle"><button className={mode === 'new' ? 'is-active' : ''} type="button" onClick={() => { setMode('new'); setError(''); setNotice(''); }}>New patient</button><button className={mode === 'existing' ? 'is-active' : ''} type="button" onClick={() => { setMode('existing'); setError(''); setNotice(''); }}>Returning</button></div>}
         <form className="auth-fields" onSubmit={handleSubmit}>
           {isDoctor ? <div className="form-field"><label htmlFor="doctor-user">Username</label><input id="doctor-user" autoComplete="username" value={form.username} onChange={event => setForm({ ...form, username: event.target.value })} required /></div>
             : <div className="form-field"><label htmlFor="patient-email">Email address</label><input id="patient-email" type="email" autoComplete="email" placeholder="you@example.com" value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} required /></div>}
+          {!isDoctor && mode === 'recover' && <div className="form-field"><label htmlFor="recovery-code">One-time recovery code</label><input id="recovery-code" autoComplete="one-time-code" value={form.recoveryCode} onChange={event => setForm({ ...form, recoveryCode: event.target.value.trim() })} required /></div>}
           {!isDoctor && mode === 'new' && <div className="form-field"><label htmlFor="patient-name">Full name</label><input id="patient-name" autoComplete="name" placeholder="Your name" value={form.fullName} onChange={event => setForm({ ...form, fullName: event.target.value })} required /></div>}
           {!isDoctor && mode === 'new' && <>
             <div className="form-grid"><div className="form-field"><label htmlFor="patient-age">Age</label><input id="patient-age" type="number" min="1" max="120" placeholder="Age" value={form.age} onChange={event => setForm({ ...form, age: event.target.value })} required /></div><div className="form-field"><label htmlFor="patient-gender">Gender</label><select id="patient-gender" value={form.gender} onChange={event => setForm({ ...form, gender: event.target.value })} required><option value="">Select</option><option>Female</option><option>Male</option><option>Other</option><option>Prefer not to say</option></select></div></div>
             <div className="form-field"><label htmlFor="patient-phone">Phone number</label><input id="patient-phone" type="tel" autoComplete="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} title="Enter exactly 10 digits." placeholder="10-digit phone number" value={form.phoneNumber} onChange={event => setForm({ ...form, phoneNumber: event.target.value.replace(/\D/g, '').slice(0, 10) })} required /></div>
             <div className="form-field"><label htmlFor="patient-emergency">Emergency contact</label><input id="patient-emergency" placeholder="Contact name or number" value={form.emergencyContact} onChange={event => setForm({ ...form, emergencyContact: event.target.value })} required /></div>
           </>}
-          <div className="form-field"><label htmlFor="account-password">Password</label><input id="account-password" type="password" minLength={!isDoctor && mode === 'new' ? 8 : undefined} maxLength={128} autoComplete={mode === 'new' && !isDoctor ? 'new-password' : 'current-password'} placeholder="Enter password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} required /></div>
+          <div className="form-field"><label htmlFor="account-password">{mode === 'recover' ? 'New password' : 'Password'}</label><input id="account-password" type="password" minLength={!isDoctor && ['new', 'recover'].includes(mode) ? 8 : undefined} maxLength={128} autoComplete={mode === 'new' || mode === 'recover' ? 'new-password' : 'current-password'} placeholder={mode === 'recover' ? 'Choose a new password' : 'Enter password'} value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} required /></div>
           {error && <div className="auth-error" role="alert">{error}</div>}
-          <button className="action-button auth-submit" disabled={loading} type="submit">{loading ? 'Please wait…' : isDoctor ? 'Open clinician workspace →' : mode === 'new' ? 'Create patient space →' : 'Sign in →'}</button>
+          {notice && <div className="success-banner" role="status">{notice}</div>}
+          <button className="action-button auth-submit" disabled={loading} type="submit">{loading ? 'Please wait…' : isDoctor ? 'Open clinician workspace →' : mode === 'new' ? 'Create patient space →' : mode === 'recover' ? 'Update password →' : 'Sign in →'}</button>
         </form>
+        {!isDoctor && mode === 'existing' && <button className="auth-home-link forgot-link" type="button" onClick={() => { setMode('recover'); setError(''); setNotice(''); }}>I have a recovery code</button>}
+        {!isDoctor && mode === 'recover' && <button className="auth-home-link forgot-link" type="button" onClick={() => { setMode('existing'); setError(''); setNotice(''); }}>Back to sign in</button>}
         {isDoctor && <p className="demo-credentials">Demo access: <strong>doctor</strong> / <strong>doctor123</strong></p>}
         <button className="auth-home-link" type="button" onClick={() => navigate('/')}>← Back to Therabot home</button>
       </div></section>

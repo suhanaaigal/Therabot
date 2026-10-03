@@ -9,6 +9,8 @@ const patientSchema = new mongoose.Schema({
   phoneNumber: { type: String, default: '' },
   emergencyContact: { type: String, default: '' },
   password: { type: String, default: '', select: false },
+  passwordResetCodeHash: { type: String, default: '', select: false },
+  passwordResetExpiresAt: { type: Date, default: null, select: false },
   otpCode: { type: String, default: null },
   isVerified: { type: Boolean, default: false },
   currentRiskBand: { type: String, enum: ['Red', 'Orange', 'Yellow', 'Green'], default: 'Green' },

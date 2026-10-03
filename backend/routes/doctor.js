@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const mongoose = require('mongoose');
+const crypto = require('node:crypto');
 const Patient = require('../models/Patient');
 const DailyCheckIn = require('../models/DailyCheckIn');
 const Notification = require('../models/Notification');
@@ -124,6 +125,29 @@ router.get('/patient/:id/report', requireDoctorSession, async (req, res) => {
     res.status(200).json(report);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/patient/:id/password-reset', requireDoctorSession, async (req, res) => {
+  try {
+    const patientId = String(req.params.id);
+    const patient = isDemoMode()
+      ? demoPatients.get(patientId) || [...demoPatients.values()].find(item => String(item._id) === patientId)
+      : await Patient.findById(patientId);
+    if (!patient) return res.status(404).json({ error: 'Patient not found.' });
+
+    const recoveryCode = crypto.randomBytes(24).toString('base64url');
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    patient.passwordResetCodeHash = crypto.createHash('sha256').update(recoveryCode).digest('hex');
+    patient.passwordResetExpiresAt = expiresAt;
+
+    if (isDemoMode()) demoPatients.set(String(patient._id), patient);
+    else await patient.save();
+
+    return res.status(200).json({ recoveryCode, expiresAt });
+  } catch (error) {
+    console.error('Patient recovery code creation failed:', error.message);
+    return res.status(500).json({ error: 'Could not create a recovery code. Please try again.' });
   }
 });
 

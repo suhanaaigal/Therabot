@@ -310,7 +310,29 @@ function AlertView({ notifications }) {
 }
 
 function PatientRecord({ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, newConsultation, setNewConsultation, scheduleConsultation, downloadPatientReport, goBack }) {
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [recoveryCodeExpiry, setRecoveryCodeExpiry] = useState('');
+  const [recoveryCodeError, setRecoveryCodeError] = useState('');
+  const [recoveryCodeLoading, setRecoveryCodeLoading] = useState(false);
+
+  async function createRecoveryCode() {
+    if (!window.confirm(`Create a one-time password recovery code for ${selectedPatient.fullName}? Give it only to the patient after verifying their identity.`)) return;
+    setRecoveryCode('');
+    setRecoveryCodeError('');
+    setRecoveryCodeLoading(true);
+    try {
+      const response = await api.post(`/api/doctor/patient/${encodeURIComponent(selectedPatient._id)}/password-reset`);
+      setRecoveryCode(response.data.recoveryCode);
+      setRecoveryCodeExpiry(response.data.expiresAt);
+    } catch (error) {
+      setRecoveryCodeError(error?.response?.data?.error || 'Could not create a recovery code. Please try again.');
+    } finally {
+      setRecoveryCodeLoading(false);
+    }
+  }
+
   return <div className="dash-section"><section className="patient-record-banner panel"><div className="patient-record-avatar">{initials(selectedPatient.fullName)}</div><div className="record-identity"><h2>{selectedPatient.fullName}</h2><p>{selectedPatient.email || 'No email listed'}</p><p>{selectedPatient.age || 'Age not listed'} · {selectedPatient.gender || 'Gender not listed'} · {selectedPatient.phoneNumber || 'No phone listed'} · Emergency: {selectedPatient.emergencyContact || 'Not listed'}</p></div><span className={`risk-badge ${riskClass(selectedPatient.currentRiskBand)}`}>{selectedPatient.currentRiskBand || 'Green'} risk</span><button className="quiet-button record-back-mobile" type="button" onClick={goBack}>← Patient list</button></section>
+    <section className="panel panel-pad"><div className="panel-head"><div><h2 className="panel-title">Patient account access</h2><p className="panel-caption">Create a single-use recovery code after verifying the patient’s identity. Deliver it privately; it expires in 30 minutes.</p></div><button className="quiet-button" type="button" disabled={recoveryCodeLoading} onClick={createRecoveryCode}>{recoveryCodeLoading ? 'Creating…' : 'Create recovery code'}</button></div>{recoveryCodeError && <div className="auth-error" role="alert">{recoveryCodeError}</div>}{recoveryCode && <div className="success-banner" role="status"><strong>One-time code:</strong> <code>{recoveryCode}</code><br />Expires {new Date(recoveryCodeExpiry).toLocaleString()}. This code is shown only here; create a new one if it is lost.</div>}</section>
     <div className="metric-grid"><Metric label="Average mood" value={patientReport?.averages?.mood ?? '—'} foot="Out of 10" icon="☼" /><Metric label="Average anxiety" value={patientReport?.averages?.anxiety ?? '—'} foot="Out of 10" tone="coral" icon="◌" /><Metric label="Average sleep" value={patientReport?.averages?.sleep ?? '—'} foot="Hours per night" icon="◷" /><Metric label="Care activity" value={patientAppointments.length + patientSessions.length} foot="Appointments and calls" icon="▦" /></div>
     {patientReport?.notes && <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Clinical snapshot</h3><p className="panel-caption">Summary from recorded check-ins.</p></div></div><p className="snapshot-text">{patientReport.notes}</p></section>}
     <div className="report-columns"><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Daily check-ins</h3><p className="panel-caption">Newest reflections and wellbeing signals.</p></div></div>{patientHistory.length ? <div className="data-list">{patientHistory.map(item => <article className="history-item" key={item._id || item.date}><div className="history-date">{new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}<span className={`risk-badge ${riskClass(item.calculatedBand)}`}>{item.calculatedBand}</span></div><div className="history-metrics">Mood <strong>{item.moodScore}/10</strong><span>·</span> Anxiety <strong>{item.anxietyLevel}/10</strong><span>·</span> Sleep <strong>{item.sleepHours}h</strong></div>{item.journalText && <p className="history-journal">{item.journalText}</p>}</article>)}</div> : <div className="empty-state">No check-ins recorded.</div>}</section>
