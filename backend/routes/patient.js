@@ -25,6 +25,42 @@ router.get('/:patientId/checkins', requirePatientSession, async (req, res) => {
   }
 });
 
+router.get('/profile', requirePatientSession, async (req, res) => {
+  try {
+    const patientId = req.patientId;
+    if (mongoose.connection.readyState === 1) {
+      const patient = await Patient.findById(patientId).select('fullName email age gender phoneNumber emergencyContact assignedDoctorId');
+      if (!patient) return res.status(404).json({ error: 'Patient profile not found.' });
+      return res.status(200).json({
+        _id: String(patient._id),
+        fullName: patient.fullName || 'Patient',
+        email: patient.email || '',
+        age: patient.age ?? '',
+        gender: patient.gender || '',
+        phoneNumber: patient.phoneNumber || '',
+        emergencyContact: patient.emergencyContact || '',
+        assignedDoctorId: patient.assignedDoctorId || ''
+      });
+    }
+
+    const patient = demoPatients.get(String(patientId));
+    if (!patient) return res.status(404).json({ error: 'Patient profile not found.' });
+    return res.status(200).json({
+      _id: String(patient._id || patientId),
+      fullName: patient.fullName || 'Patient',
+      email: patient.email || '',
+      age: patient.age ?? '',
+      gender: patient.gender || '',
+      phoneNumber: patient.phoneNumber || '',
+      emergencyContact: patient.emergencyContact || '',
+      assignedDoctorId: patient.assignedDoctorId || ''
+    });
+  } catch (error) {
+    console.error('Patient profile lookup failed:', error.message);
+    return res.status(500).json({ error: 'Could not load your profile.' });
+  }
+});
+
 const createAlertNotification = async (patient, band, summaryText) => {
   if (band !== 'Red' && band !== 'Orange') return null;
 
