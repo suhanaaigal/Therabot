@@ -17,13 +17,26 @@ const getConfiguredModel = useOllama => useOllama
 const generateContextualFallback = (message, conversation = []) => {
   const latestUserMessage = String(message || '').replace(/\s+/g, ' ').trim();
   const lowerMessage = latestUserMessage.toLowerCase();
-  const previousUserMessage = [...conversation].reverse().find(item => item.role === 'user' && item.content);
-  const context = previousUserMessage && String(previousUserMessage.content).trim() !== latestUserMessage
-    ? ` You mentioned earlier that ${String(previousUserMessage.content).replace(/\s+/g, ' ').trim().slice(0, 140)}.`
-    : '';
+  const meaningfulPreviousMessage = [...conversation].reverse().find(item => {
+    const content = String(item?.content || '').replace(/\s+/g, ' ').trim();
+    return item?.role === 'user' && content && !/^(hi|hii|hello|hey|good morning|good afternoon|good evening|ok|okay|thanks|thank you)[!. ]*$/i.test(content);
+  });
+  const previousMessage = String(meaningfulPreviousMessage?.content || '').replace(/\s+/g, ' ').trim();
+  const previousContext = previousMessage && previousMessage.toLowerCase() !== lowerMessage ? previousMessage.slice(0, 160) : '';
+
+  if (/^(hi|hii|hello|hey|good morning|good afternoon|good evening)[!. ]*$/i.test(lowerMessage)) {
+    return 'Hi, I’m here with you. What has been on your mind today?';
+  }
+  if (/^(thanks|thank you|ok|okay)[!. ]*$/i.test(lowerMessage)) {
+    return 'You’re welcome. We can take this one step at a time. What would feel helpful now?';
+  }
+
+  const projectContext = /project|assignment|work|deadline|study|college|school|exam/i.test(`${lowerMessage} ${previousContext}`);
 
   if (/overwhelmed|too much|can't cope|cannot cope|stressed|stress|burnout/i.test(lowerMessage)) {
-    return `That sounds like a lot to carry at once.${context} For the next minute, choose just one small task: put both feet on the floor, take one slow breath out, and name the next thing that truly needs your attention. What feels heaviest right now?`;
+    return projectContext
+      ? `A project can feel overwhelming when all the tasks blur together. Let’s make it smaller: write down the deadline, then choose the one next action that would take 10 minutes or less. What part is creating the most pressure: the deadline, the amount of work, or not knowing where to start?`
+      : 'That sounds like a lot to carry at once. For the next minute, put both feet on the floor, take one slow breath out, and name the next thing that truly needs your attention. What feels heaviest right now?';
   }
   if (/anxious|anxiety|panic|worried|worry|nervous|fear/i.test(lowerMessage)) {
     return `Anxiety can make everything feel urgent, even when you do not have to solve it all right now. Try looking around and naming five things you can see, then let your exhale be a little longer than your inhale. Is the anxiety connected to something specific, or does it feel more general today?`;
@@ -41,7 +54,11 @@ const generateContextualFallback = (message, conversation = []) => {
     return `I am sorry this feels heavy today. You do not need to explain it perfectly. What would feel most supportive right now: being heard, finding one small distraction, or thinking through a next step?`;
   }
 
-  return `Thank you for telling me. I am here to help you slow the moment down and make sense of it, one piece at a time.${context} What part of this feels most important to talk through first?`;
+  if (projectContext) {
+    return `It sounds like your project is taking up a lot of mental space. We can sort it out without tackling everything at once. What is the next concrete thing you need to finish or decide?`;
+  }
+
+  return 'Thank you for telling me. I’m here to help you slow the moment down and make sense of it, one piece at a time. What feels most important to talk through first?';
 };
 
 const generateAiReply = async (userMessage = '', conversation = []) => {
