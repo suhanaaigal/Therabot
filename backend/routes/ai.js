@@ -16,12 +16,32 @@ const getConfiguredModel = useOllama => useOllama
 
 const generateContextualFallback = (message, conversation = []) => {
   const latestUserMessage = String(message || '').replace(/\s+/g, ' ').trim();
-  const previousUserMessage = [...conversation].reverse().find(item => item.role === 'user')?.content;
-  const context = previousUserMessage && previousUserMessage !== latestUserMessage
-    ? ` Earlier you mentioned: “${String(previousUserMessage).slice(0, 180)}”.`
+  const lowerMessage = latestUserMessage.toLowerCase();
+  const previousUserMessage = [...conversation].reverse().find(item => item.role === 'user' && item.content);
+  const context = previousUserMessage && String(previousUserMessage.content).trim() !== latestUserMessage
+    ? ` You mentioned earlier that ${String(previousUserMessage.content).replace(/\s+/g, ' ').trim().slice(0, 140)}.`
     : '';
 
-  return `I hear you: “${latestUserMessage.slice(0, 280)}”.${context} I don't want to assume what this means for you. What feels most important for me to understand about it?`;
+  if (/overwhelmed|too much|can't cope|cannot cope|stressed|stress|burnout/i.test(lowerMessage)) {
+    return `That sounds like a lot to carry at once.${context} For the next minute, choose just one small task: put both feet on the floor, take one slow breath out, and name the next thing that truly needs your attention. What feels heaviest right now?`;
+  }
+  if (/anxious|anxiety|panic|worried|worry|nervous|fear/i.test(lowerMessage)) {
+    return `Anxiety can make everything feel urgent, even when you do not have to solve it all right now. Try looking around and naming five things you can see, then let your exhale be a little longer than your inhale. Is the anxiety connected to something specific, or does it feel more general today?`;
+  }
+  if (/sleep|insomnia|can't sleep|cannot sleep|tired|exhausted/i.test(lowerMessage)) {
+    return `Poor sleep can make the whole day feel harder. Tonight, keep the goal gentle rather than forcing sleep: dim one light, put the phone a little farther away, and try a slow body scan from your forehead to your feet. How has your sleep been recently?`;
+  }
+  if (/lonely|alone|isolated|no one|nobody/i.test(lowerMessage)) {
+    return `Feeling alone can be painful, and you do not have to make it sound smaller than it is. Could you send one simple message to someone safe, such as “I could use a little company today”? If reaching out feels too much, we can stay with what this moment feels like together.`;
+  }
+  if (/grounding|calm down|calming|relax|breathe|breathing/i.test(lowerMessage)) {
+    return `Let’s make this simple. Notice one thing you can see, one thing you can feel, and one sound nearby. Then take a slow breath out. You do not need to feel completely calm; just a little more present is enough.`;
+  }
+  if (/sad|down|low|crying|depressed/i.test(lowerMessage)) {
+    return `I am sorry this feels heavy today. You do not need to explain it perfectly. What would feel most supportive right now: being heard, finding one small distraction, or thinking through a next step?`;
+  }
+
+  return `Thank you for telling me. I am here to help you slow the moment down and make sense of it, one piece at a time.${context} What part of this feels most important to talk through first?`;
 };
 
 const generateAiReply = async (userMessage = '', conversation = []) => {
@@ -173,7 +193,10 @@ router.post('/chat', async (req, res) => {
     generated = await generateAiReply(trimmedMessage, history);
   } catch (error) {
     console.error('AI provider request failed:', error.message);
-    return res.status(503).json({ error: 'The AI companion is temporarily unavailable. Please try again shortly.' });
+    generated = {
+      reply: generateContextualFallback(trimmedMessage, history),
+      provider: 'basic-fallback'
+    };
   }
 
   const aiMessage = {
