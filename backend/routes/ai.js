@@ -54,8 +54,22 @@ const generateContextualFallback = (message, conversation = []) => {
     return `I am sorry this feels heavy today. You do not need to explain it perfectly. What would feel most supportive right now: being heard, finding one small distraction, or thinking through a next step?`;
   }
 
+  if (/not feeling good|not okay|don't feel good|do not feel good|feeling bad|feel awful|feel terrible/i.test(lowerMessage)) {
+    return `I’m sorry you’re having a difficult moment. Do you mean you’re feeling emotionally low, physically unwell, or a bit of both? If you feel unsafe or may hurt yourself, please tell someone nearby and contact local emergency or crisis support now.`;
+  }
+
   if (projectContext) {
     return `It sounds like your project is taking up a lot of mental space. We can sort it out without tackling everything at once. What is the next concrete thing you need to finish or decide?`;
+  }
+
+  if (/angry|frustrated|irritated|annoyed/i.test(lowerMessage)) {
+    return `It sounds like something has pushed you past your limit. Before deciding what to do next, take a short pause and give yourself room to cool down. What happened just before you started feeling this frustrated?`;
+  }
+  if (/relationship|friend|family|partner|breakup|argument/i.test(lowerMessage)) {
+    return `Relationships can bring up a lot at once. You do not have to solve the whole situation in one conversation. What is hurting most right now: what happened, what was said, or what you are worried will happen next?`;
+  }
+  if (/motivat|procrastinat|can't focus|cannot focus|distracted/i.test(lowerMessage)) {
+    return `You do not need to feel fully motivated before beginning. Try choosing a two-minute version of the task, then stop or continue based on how it feels. What is the smallest part you could start with?`;
   }
 
   return 'Thank you for telling me. I’m here to help you slow the moment down and make sense of it, one piece at a time. What feels most important to talk through first?';
@@ -96,7 +110,7 @@ const generateAiReply = async (userMessage = '', conversation = []) => {
         messages: [
           {
             role: 'system',
-            content: 'You are Therabot, a supportive mental-wellbeing conversation companion, not a clinician. Respond to the specific details the user shared and use recent conversation context; do not give generic advice when a focused response is possible. Start by acknowledging their experience without exaggerating, diagnosing, or claiming certainty. Ask at most one concise, relevant question. Offer a practical suggestion only when it fits, and keep it optional. Do not invent facts, repeat canned scripts, prescribe medication, or imply that you replace professional care. For medical or clinical questions, be transparent about limits and encourage discussion with a qualified professional. If the user describes imminent self-harm or danger, prioritize immediate safety: encourage contacting local emergency services, a crisis service, and a trusted person nearby.'
+            content: 'You are Therabot, a warm and attentive mental-wellbeing conversation companion, not a clinician. Respond to the specific details the user shared and use recent conversation context. If the user sends a short follow-up such as “my project”, connect it to the immediately preceding concern instead of treating it as a new unrelated message. Do not repeat a generic greeting or ask what matters most when the context already makes the topic clear. Start by acknowledging their experience without exaggerating, diagnosing, or claiming certainty. Ask at most one concise, relevant question. Offer one practical suggestion only when it fits, and keep it optional. Do not invent facts, repeat canned scripts, prescribe medication, or imply that you replace professional care. For medical or clinical questions, be transparent about limits and encourage discussion with a qualified professional. If the user describes imminent self-harm or danger, prioritize immediate safety: encourage contacting local emergency services, a crisis service, and a trusted person nearby.'
           },
           ...(Array.isArray(conversation) ? conversation : []).slice(-8).map(item => ({
             role: item.role === 'assistant' ? 'assistant' : 'user',
