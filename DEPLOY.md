@@ -20,6 +20,8 @@ The AI companion uses a context-aware basic fallback when no model provider is c
 
 Patient signup and sign-in use backend email/password authentication. New passwords are stored as salted scrypt hashes; legacy plaintext passwords are upgraded to hashes after a successful login. Firebase is not used for patient authentication. Email verification and password recovery are currently unavailable. Existing Firebase-linked patient accounts have no backend password and must be migrated by the care team before they can sign in; do not delete their patient records as a shortcut because related care history references those records.
 
+Patients choose a clinician during signup. Doctor dashboards and doctor API access are scoped to the assigned clinician, including patient records, appointments, alerts, and consultation notes. On backend startup, unassigned legacy patient records are assigned to the doctor on their most recent appointment; records without an appointment are assigned to the existing default doctor. Additional clinician accounts must be provisioned through a trusted administrative process; do not expose public doctor registration.
+
 ## 2. Frontend on Vercel
 
 - Import the frontend folder as a project.

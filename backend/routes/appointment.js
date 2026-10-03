@@ -3,8 +3,10 @@ const mongoose = require('mongoose');
 const Appointment = require('../models/Appointment');
 const CallSession = require('../models/CallSession');
 const Doctor = require('../models/Doctor');
+const Patient = require('../models/Patient');
 const Notification = require('../models/Notification');
-const { demoAppointments, demoCallSessions, demoDoctors, demoNotifications, ensureDefaultDoctor } = require('../demoStore');
+const { demoAppointments, demoCallSessions, demoDoctors, demoNotifications, demoPatients, ensureDefaultDoctor } = require('../demoStore');
+const { requireDoctorSession } = require('../doctorSession');
 
 const isDemoRecord = (value = '') => /\b(test|demo|dummy|sample)\b/i.test(String(value));
 
@@ -60,6 +62,15 @@ const getDefaultDoctor = async () => {
   }
 
   return doctor;
+};
+
+const findPatientAssignedToDoctor = async (patientId, doctorId) => {
+  if (isDemoMode()) {
+    return [...demoPatients.values()].find(patient =>
+      String(patient._id) === String(patientId) && String(patient.assignedDoctorId || 'doctor-default') === String(doctorId)
+    ) || null;
+  }
+  return Patient.findOne({ _id: patientId, assignedDoctorId: String(doctorId) }).select('_id');
 };
 
 const getSlotMinutes = (scheduledTime) => {
@@ -144,11 +155,16 @@ const generateSessionSummary = (transcript = []) => {
 router.get('/doctors', async (req, res) => {
   try {
     if (isDemoMode()) {
-      const doctor = getDemoDoctor();
-      return res.status(200).json([doctor]);
+      getDemoDoctor();
+      return res.status(200).json([...demoDoctors.values()].map(doctor => ({
+        _id: String(doctor._id),
+        fullName: doctor.fullName,
+        specialty: doctor.specialty,
+        username: doctor.username
+      })));
     }
 
-    let doctors = await Doctor.find().sort({ fullName: 1 });
+    let doctors = await Doctor.find().select('_id fullName specialty username').sort({ fullName: 1 });
 
     if (!doctors.length) {
       const seededDoctor = await Doctor.findOneAndUpdate(
@@ -164,7 +180,12 @@ router.get('/doctors', async (req, res) => {
       doctors = [seededDoctor];
     }
 
-    res.status(200).json(doctors);
+    res.status(200).json(doctors.map(doctor => ({
+      _id: String(doctor._id),
+      fullName: doctor.fullName,
+      specialty: doctor.specialty,
+      username: doctor.username
+    })));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -211,7 +232,14 @@ router.post('/request', async (req, res) => {
       return res.status(400).json({ error: 'doctorId, scheduledDate and scheduledTime are required.' });
     }
 
-    const doctor = isDemoMode() ? getDemoDoctor() : await Doctor.findById(resolvedDoctorId).catch(() => null);
+    const doctor = isDemoMode() ? demoDoctors.get(resolvedDoctorId) || getDemoDoctor() : await Doctor.findById(resolvedDoctorId).catch(() => null);
+    const patient = isDemoMode()
+      ? [...demoPatients.values()].find(item => String(item._id) === String(normalizedPatientId))
+      : await Patient.findById(normalizedPatientId);
+    if (!patient) return res.status(404).json({ error: 'Patient account not found.' });
+    if (String(patient.assignedDoctorId || '') !== String(resolvedDoctorId)) {
+      return res.status(403).json({ error: 'This patient is assigned to a different doctor.' });
+    }
     const conflict = await getAppointmentConflict(resolvedDoctorId, scheduledDate, scheduledTime);
 
     if (isDemoMode()) {
@@ -279,10 +307,14 @@ router.get('/patient/:patientId', async (req, res) => {
   }
 });
 
-router.get('/doctor/:doctorId/requests', async (req, res) => {
+router.get('/doctor/:doctorId/requests', requireDoctorSession, async (req, res) => {
   try {
+    if (String(req.params.doctorId) !== String(req.doctorId)) return res.status(403).json({ error: 'You can only view your own appointment requests.' });
     if (isDemoMode()) {
-      const appointments = demoAppointments.filter(item => String(item.doctorId) === String(req.params.doctorId));
+      const appointments = demoAppointments.filter(item =>
+        String(item.doctorId) === String(req.doctorId) &&
+        [...demoPatients.values()].some(patient => String(patient._id) === String(item.patientId) && String(patient.assignedDoctorId || 'doctor-default') === String(req.doctorId))
+      );
       const withAvailability = appointments.map((appointment) => ({
         ...appointment,
         isAvailable: !demoAppointments.some(item =>
@@ -296,7 +328,8 @@ router.get('/doctor/:doctorId/requests', async (req, res) => {
       return res.status(200).json(withAvailability);
     }
 
-    const appointments = await Appointment.find({ doctorId: req.params.doctorId }).sort({ createdAt: -1 });
+    const patientIds = (await Patient.find({ assignedDoctorId: String(req.doctorId) }).select('_id')).map(patient => String(patient._id));
+    const appointments = await Appointment.find({ doctorId: req.doctorId, patientId: { $in: patientIds } }).sort({ createdAt: -1 });
     const withAvailability = await Promise.all(appointments.map(async (appointment) => {
       const conflict = await getAppointmentConflict(appointment.doctorId, appointment.scheduledDate, appointment.scheduledTime, appointment._id);
       return {
@@ -310,16 +343,15 @@ router.get('/doctor/:doctorId/requests', async (req, res) => {
   }
 });
 
-router.patch('/:id/approve', async (req, res) => {
+router.patch('/:id/approve', requireDoctorSession, async (req, res) => {
   try {
-    const { doctorId } = req.body || {};
-
     if (isDemoMode()) {
       const appointment = demoAppointments.find(item => String(item._id) === String(req.params.id));
       if (!appointment) return res.status(404).json({ error: 'Appointment not found.' });
-      if (doctorId && appointment.doctorId && String(appointment.doctorId) !== String(doctorId)) {
+      if (String(appointment.doctorId) !== String(req.doctorId)) {
         return res.status(403).json({ error: 'This appointment is not assigned to this doctor.' });
       }
+      if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
 
       const conflict = await getAppointmentConflict(appointment.doctorId, appointment.scheduledDate, appointment.scheduledTime, appointment._id);
 
@@ -368,9 +400,10 @@ router.patch('/:id/approve', async (req, res) => {
       return res.status(404).json({ error: 'Appointment not found.' });
     }
 
-    if (doctorId && appointment.doctorId && String(appointment.doctorId) !== String(doctorId)) {
+    if (String(appointment.doctorId) !== String(req.doctorId)) {
       return res.status(403).json({ error: 'This appointment is not assigned to this doctor.' });
     }
+    if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
 
     const conflict = await getAppointmentConflict(appointment.doctorId, appointment.scheduledDate, appointment.scheduledTime, appointment._id);
     if (conflict && !isPriorityAppointment(appointment)) {
@@ -416,13 +449,15 @@ router.patch('/:id/approve', async (req, res) => {
   }
 });
 
-router.patch('/:id/decline', async (req, res) => {
+router.patch('/:id/decline', requireDoctorSession, async (req, res) => {
   try {
     if (isDemoMode()) {
       const appointment = demoAppointments.find(item => String(item._id) === String(req.params.id));
       if (!appointment) {
         return res.status(404).json({ error: 'Appointment not found.' });
       }
+      if (String(appointment.doctorId) !== String(req.doctorId)) return res.status(403).json({ error: 'This appointment is not assigned to this doctor.' });
+      if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
       appointment.status = 'Declined';
       appointment.declinedAt = new Date();
       demoNotifications.unshift({
@@ -446,6 +481,8 @@ router.patch('/:id/decline', async (req, res) => {
     if (!appointment) {
       return res.status(404).json({ error: 'Appointment not found.' });
     }
+    if (String(appointment.doctorId) !== String(req.doctorId)) return res.status(403).json({ error: 'This appointment is not assigned to this doctor.' });
+    if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
 
     appointment.status = 'Declined';
     appointment.declinedAt = new Date();
@@ -484,16 +521,15 @@ router.get('/patient/:patientId/notifications', async (req, res) => {
   }
 });
 
-router.patch('/:id/start-call', async (req, res) => {
+router.patch('/:id/start-call', requireDoctorSession, async (req, res) => {
   try {
-    const { doctorId } = req.body || {};
-
     if (isDemoMode()) {
       const appointment = demoAppointments.find(item => String(item._id) === String(req.params.id));
       if (!appointment) return res.status(404).json({ error: 'Appointment not found.' });
-      if (doctorId && String(appointment.doctorId) !== String(doctorId)) {
+      if (String(appointment.doctorId) !== String(req.doctorId)) {
         return res.status(403).json({ error: 'Only the assigned doctor can start this call.' });
       }
+      if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
       if (!isAppointmentLive(appointment.scheduledDate, appointment.scheduledTime)) {
         return res.status(409).json({ error: 'The call can only be started during the scheduled appointment time.' });
       }
@@ -510,9 +546,10 @@ router.patch('/:id/start-call', async (req, res) => {
       return res.status(404).json({ error: 'Appointment not found.' });
     }
 
-    if (doctorId && String(appointment.doctorId) !== String(doctorId)) {
+    if (String(appointment.doctorId) !== String(req.doctorId)) {
       return res.status(403).json({ error: 'Only the assigned doctor can start this call.' });
     }
+    if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
 
     if (!isAppointmentLive(appointment.scheduledDate, appointment.scheduledTime)) {
       return res.status(409).json({ error: 'The call can only be started during the scheduled appointment time.' });
@@ -539,11 +576,13 @@ router.patch('/:id/start-call', async (req, res) => {
   }
 });
 
-router.patch('/:id/end-call', async (req, res) => {
+router.patch('/:id/end-call', requireDoctorSession, async (req, res) => {
   try {
     if (isDemoMode()) {
       const appointment = demoAppointments.find(item => String(item._id) === String(req.params.id));
       if (!appointment) return res.status(404).json({ error: 'Appointment not found.' });
+      if (String(appointment.doctorId) !== String(req.doctorId)) return res.status(403).json({ error: 'Only the assigned doctor can end this call.' });
+      if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
       appointment.callEnded = true;
       appointment.callStarted = false;
       return res.status(200).json({ message: 'Call ended successfully.', appointment });
@@ -551,6 +590,8 @@ router.patch('/:id/end-call', async (req, res) => {
 
     const appointment = await Appointment.findById(req.params.id);
     if (!appointment) return res.status(404).json({ error: 'Appointment not found.' });
+    if (String(appointment.doctorId) !== String(req.doctorId)) return res.status(403).json({ error: 'Only the assigned doctor can end this call.' });
+    if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
     appointment.callEnded = true;
     appointment.callStarted = false;
     await appointment.save();
@@ -561,21 +602,23 @@ router.patch('/:id/end-call', async (req, res) => {
 });
 
 // Book a new appointment
-router.post('/book', async (req, res) => {
+router.post('/book', requireDoctorSession, async (req, res) => {
   try {
-    let { patientId, patientName, doctorId, doctorName, scheduledDate, scheduledTime } = req.body;
-
-    if (!doctorId) {
-      const doctor = await getDefaultDoctor();
-      doctorId = doctor?._id?.toString();
-    }
+    let { patientId, patientName, doctorName, scheduledDate, scheduledTime } = req.body;
+    const doctorId = String(req.doctorId);
 
     if (!patientId || !doctorId || !scheduledDate || !scheduledTime) {
       return res.status(400).json({ error: 'patientId, doctorId, scheduledDate and scheduledTime are required.' });
     }
 
+    const patient = isDemoMode()
+      ? [...demoPatients.values()].find(item => String(item._id) === String(patientId))
+      : await Patient.findById(patientId);
+    if (!patient) return res.status(404).json({ error: 'Patient account not found.' });
+    if (String(patient.assignedDoctorId || '') !== doctorId) return res.status(403).json({ error: 'This patient is assigned to a different doctor.' });
+
     if (isDemoMode()) {
-      const doctor = getDemoDoctor();
+      const doctor = demoDoctors.get(doctorId) || getDemoDoctor();
       const conflict = await getAppointmentConflict(doctorId, scheduledDate, scheduledTime);
       const appointment = {
         _id: `demo-apt-${Date.now()}`,
@@ -656,16 +699,19 @@ router.post('/book', async (req, res) => {
 });
 
 // Get all appointments (for Doctor & Patient views)
-router.get('/all', async (req, res) => {
+router.get('/all', requireDoctorSession, async (req, res) => {
   try {
     if (isDemoMode()) {
       const validAppointments = demoAppointments.filter(
-        app => !isDemoRecord(app.patientName) && isFutureSlot(app.scheduledDate, app.scheduledTime)
+        app => String(app.doctorId) === String(req.doctorId) &&
+          [...demoPatients.values()].some(patient => String(patient._id) === String(app.patientId) && String(patient.assignedDoctorId || 'doctor-default') === String(req.doctorId)) &&
+          !isDemoRecord(app.patientName) && isFutureSlot(app.scheduledDate, app.scheduledTime)
       );
       return res.status(200).json(validAppointments);
     }
 
-    const appointments = await Appointment.find().sort({ createdAt: -1 });
+    const patientIds = (await Patient.find({ assignedDoctorId: String(req.doctorId) }).select('_id')).map(patient => String(patient._id));
+    const appointments = await Appointment.find({ doctorId: req.doctorId, patientId: { $in: patientIds } }).sort({ createdAt: -1 });
     const validAppointments = appointments.filter(
       app => !isDemoRecord(app.patientName) && isFutureSlot(app.scheduledDate, app.scheduledTime)
     );
@@ -675,7 +721,7 @@ router.get('/all', async (req, res) => {
   }
 });
 
-router.post('/session/transcript', async (req, res) => {
+router.post('/session/transcript', requireDoctorSession, async (req, res) => {
   try {
     const { roomUrl, transcript = [], doctorName = 'Doctor' } = req.body || {};
 
@@ -688,6 +734,8 @@ router.post('/session/transcript', async (req, res) => {
       if (!session) {
         return res.status(404).json({ error: 'Session not found' });
       }
+      const patient = [...demoPatients.values()].find(item => String(item._id) === String(session.patientId));
+      if (String(patient?.assignedDoctorId || 'doctor-default') !== String(req.doctorId)) return res.status(403).json({ error: 'This session is not assigned to your care team.' });
       session.transcript = transcript;
       session.doctorName = doctorName;
       session.summary = generateSessionSummary(transcript);
@@ -699,6 +747,8 @@ router.post('/session/transcript', async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
     }
+    const patient = await Patient.findOne({ _id: session.patientId, assignedDoctorId: String(req.doctorId) }).select('_id');
+    if (!patient) return res.status(403).json({ error: 'This session is not assigned to your care team.' });
 
     session.transcript = transcript;
     session.doctorName = doctorName;
@@ -712,16 +762,17 @@ router.post('/session/transcript', async (req, res) => {
   }
 });
 
-router.get('/sessions', async (req, res) => {
+router.get('/sessions', requireDoctorSession, async (req, res) => {
   try {
     if (isDemoMode()) {
       const validSessions = demoCallSessions.filter(
-        session => !isDemoRecord(session.patientName)
+        session => !isDemoRecord(session.patientName) && demoAppointments.some(appointment => String(appointment.patientId) === String(session.patientId) && String(appointment.doctorId) === String(req.doctorId))
       );
       return res.status(200).json(validSessions);
     }
 
-    const sessions = await CallSession.find().sort({ createdAt: -1 });
+    const patientIds = (await Patient.find({ assignedDoctorId: String(req.doctorId) }).select('_id')).map(patient => String(patient._id));
+    const sessions = await CallSession.find({ patientId: { $in: patientIds } }).sort({ createdAt: -1 });
 
     for (const session of sessions) {
       const transcript = Array.isArray(session.transcript) ? session.transcript : [];

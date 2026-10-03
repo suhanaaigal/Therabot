@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 
@@ -9,7 +9,21 @@ export default function TherabotAuthPage({ role }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [form, setForm] = useState({ fullName: '', username: 'doctor', email: '', recoveryCode: '', phoneNumber: '', age: '', gender: '', emergencyContact: '', password: isDoctor ? 'doctor123' : '' });
+  const [doctors, setDoctors] = useState([]);
+  const [form, setForm] = useState({ fullName: '', username: 'doctor', email: '', recoveryCode: '', doctorId: '', phoneNumber: '', age: '', gender: '', emergencyContact: '', password: isDoctor ? 'doctor123' : '' });
+
+  useEffect(() => {
+    if (isDoctor) return;
+    api.get('/api/appointment/doctors')
+      .then(response => {
+        const availableDoctors = response.data || [];
+        setDoctors(availableDoctors);
+        if (availableDoctors.length === 1) {
+          setForm(current => ({ ...current, doctorId: String(availableDoctors[0]._id) }));
+        }
+      })
+      .catch(() => setError('We could not load the care team. Refresh and try again.'));
+  }, [isDoctor]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -45,6 +59,7 @@ export default function TherabotAuthPage({ role }) {
         ? await api.post('/api/auth/register-simple', {
           fullName: form.fullName,
           email: form.email,
+          doctorId: form.doctorId,
           age: Number(form.age),
           gender: form.gender,
           phoneNumber: form.phoneNumber,
@@ -54,6 +69,10 @@ export default function TherabotAuthPage({ role }) {
         : await api.post('/api/auth/login', { email: form.email, password: form.password });
       localStorage.setItem('patientId', response.data.patientId);
       localStorage.setItem('patientName', response.data.patientName || form.fullName);
+      if (response.data.assignedDoctorId) {
+        localStorage.setItem('assignedDoctorId', response.data.assignedDoctorId);
+        localStorage.removeItem('singleDoctorId');
+      }
       navigate('/dashboard');
     } catch (requestError) {
       const serverMessage = requestError?.response?.data?.error;
@@ -80,6 +99,7 @@ export default function TherabotAuthPage({ role }) {
             : <div className="form-field"><label htmlFor="patient-email">Email address</label><input id="patient-email" type="email" autoComplete="email" placeholder="you@example.com" value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} required /></div>}
           {!isDoctor && mode === 'recover' && <div className="form-field"><label htmlFor="recovery-code">One-time recovery code</label><input id="recovery-code" autoComplete="one-time-code" value={form.recoveryCode} onChange={event => setForm({ ...form, recoveryCode: event.target.value.trim() })} required /></div>}
           {!isDoctor && mode === 'new' && <div className="form-field"><label htmlFor="patient-name">Full name</label><input id="patient-name" autoComplete="name" placeholder="Your name" value={form.fullName} onChange={event => setForm({ ...form, fullName: event.target.value })} required /></div>}
+          {!isDoctor && mode === 'new' && <div className="form-field"><label htmlFor="patient-doctor">Choose your doctor</label><select id="patient-doctor" value={form.doctorId} onChange={event => setForm({ ...form, doctorId: event.target.value })} required disabled={!doctors.length}><option value="">{doctors.length ? 'Select a doctor' : 'Loading care team…'}</option>{doctors.map(doctor => <option key={doctor._id} value={doctor._id}>{doctor.fullName}{doctor.specialty ? ` · ${doctor.specialty}` : ''}</option>)}</select></div>}
           {!isDoctor && mode === 'new' && <>
             <div className="form-grid"><div className="form-field"><label htmlFor="patient-age">Age</label><input id="patient-age" type="number" min="1" max="120" placeholder="Age" value={form.age} onChange={event => setForm({ ...form, age: event.target.value })} required /></div><div className="form-field"><label htmlFor="patient-gender">Gender</label><select id="patient-gender" value={form.gender} onChange={event => setForm({ ...form, gender: event.target.value })} required><option value="">Select</option><option>Female</option><option>Male</option><option>Other</option><option>Prefer not to say</option></select></div></div>
             <div className="form-field"><label htmlFor="patient-phone">Phone number</label><input id="patient-phone" type="tel" autoComplete="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} title="Enter exactly 10 digits." placeholder="10-digit phone number" value={form.phoneNumber} onChange={event => setForm({ ...form, phoneNumber: event.target.value.replace(/\D/g, '').slice(0, 10) })} required /></div>

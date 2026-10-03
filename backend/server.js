@@ -24,6 +24,9 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const CallSession = require('./models/CallSession');
+const Patient = require('./models/Patient');
+const Appointment = require('./models/Appointment');
+const Doctor = require('./models/Doctor');
 const { demoCallSessions } = require('./demoStore');
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
@@ -194,6 +197,43 @@ const MONGO_URL = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/mental-hea
 
 const PORT = Number(process.env.PORT) || 5000;
 
+const migrateLegacyPatientAssignments = async () => {
+  const unassignedPatients = await Patient.find({
+    $or: [{ assignedDoctorId: '' }, { assignedDoctorId: { $exists: false } }]
+  }).select('_id');
+  if (!unassignedPatients.length) return;
+
+  let defaultDoctor = await Doctor.findOne().sort({ createdAt: 1 }).select('_id');
+  if (!defaultDoctor) {
+    defaultDoctor = await Doctor.findOneAndUpdate(
+      { username: 'doctor' },
+      { username: 'doctor', password: 'doctor123', fullName: 'Dr. Suhana Aigal', specialty: 'Mental Wellness' },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    ).select('_id');
+  }
+
+  const patientIds = unassignedPatients.map(patient => String(patient._id));
+  const historicalAppointments = await Appointment.find({
+    patientId: { $in: patientIds },
+    doctorId: { $nin: ['', null] }
+  }).select('patientId doctorId createdAt').sort({ createdAt: -1 });
+  const doctorByPatient = new Map();
+  for (const appointment of historicalAppointments) {
+    const patientId = String(appointment.patientId);
+    if (!doctorByPatient.has(patientId)) doctorByPatient.set(patientId, String(appointment.doctorId));
+  }
+
+  const fallbackDoctorId = String(defaultDoctor._id);
+  const updates = unassignedPatients.map(patient => ({
+    updateOne: {
+      filter: { _id: patient._id, $or: [{ assignedDoctorId: '' }, { assignedDoctorId: { $exists: false } }] },
+      update: { $set: { assignedDoctorId: doctorByPatient.get(String(patient._id)) || fallbackDoctorId } }
+    }
+  }));
+  await Patient.bulkWrite(updates);
+  console.log(`Assigned ${updates.length} legacy patient records to their care teams.`);
+};
+
 const startServer = async () => {
   if (isProduction && !isMongoConfigured) {
     throw new Error('MONGO_URI must be configured in production; refusing to start with non-persistent demo storage.');
@@ -203,9 +243,13 @@ const startServer = async () => {
     if (isProduction) {
       await mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 10000 });
       console.log('MongoDB Connected Successfully');
+      await migrateLegacyPatientAssignments();
     } else {
       mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 5000 })
-        .then(() => console.log('MongoDB Connected Successfully'))
+        .then(async () => {
+          console.log('MongoDB Connected Successfully');
+          await migrateLegacyPatientAssignments();
+        })
         .catch(err => console.warn('MongoDB unavailable; local development is using demo storage:', err.message));
     }
   } else {

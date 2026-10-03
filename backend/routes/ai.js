@@ -3,7 +3,9 @@ const ChatMessage = require('../models/ChatMessage');
 const mongoose = require('mongoose');
 const CallSession = require('../models/CallSession');
 const Appointment = require('../models/Appointment');
-const { demoAppointments, demoCallSessions } = require('../demoStore');
+const Patient = require('../models/Patient');
+const { demoAppointments, demoCallSessions, demoPatients } = require('../demoStore');
+const { requireDoctorSession } = require('../doctorSession');
 
 const crisisMessage = `I want to take this seriously. If you feel like you might hurt yourself or you are in immediate danger, please contact emergency services or a local crisis line right now. In the US and Canada, call or text 988. If you are elsewhere, use your local emergency or crisis support number. I can also stay with you and help you take the next safe step.`;
 
@@ -191,12 +193,48 @@ router.post('/chat', async (req, res) => {
   });
 });
 
-router.post('/clinical-note', async (req, res) => {
+router.post('/clinical-note', requireDoctorSession, async (req, res) => {
   const { roomUrl, appointmentId, transcript = [], source = 'transcript', patientName = 'the patient', doctorName = 'the clinician' } = req.body || {};
 
   if (!roomUrl) return res.status(400).json({ error: 'roomUrl is required' });
   if (!Array.isArray(transcript) || transcript.length === 0) {
     return res.status(400).json({ error: 'A transcript is required to draft a clinical note.' });
+  }
+
+  if (mongoose.connection.readyState === 1) {
+    const appointment = appointmentId
+      ? await Appointment.findOne({ _id: appointmentId, doctorId: String(req.doctorId) })
+      : null;
+    const session = roomUrl ? await CallSession.findOne({ roomUrl }) : null;
+    if (appointmentId && !appointment) return res.status(404).json({ error: 'Appointment not found in your care team.' });
+    if (session && appointment && String(session.patientId) !== String(appointment.patientId)) {
+      return res.status(403).json({ error: 'Appointment and session do not belong to the same patient.' });
+    }
+    const patientId = appointment?.patientId || session?.patientId;
+    const patient = patientId
+      ? await Patient.findOne({ _id: patientId, assignedDoctorId: String(req.doctorId) }).select('_id')
+      : null;
+    if (!patient) return res.status(404).json({ error: 'Consultation not found in your care team.' });
+    if (appointment && String(appointment.roomUrl || '') !== String(roomUrl || '')) {
+      return res.status(403).json({ error: 'The consultation link does not match this appointment.' });
+    }
+  } else {
+    const appointment = appointmentId
+      ? demoAppointments.find(item => String(item._id) === String(appointmentId) && String(item.doctorId) === String(req.doctorId))
+      : null;
+    const session = roomUrl ? demoCallSessions.find(item => String(item.roomUrl) === String(roomUrl)) : null;
+    if (appointmentId && !appointment) return res.status(404).json({ error: 'Appointment not found in your care team.' });
+    if (session && appointment && String(session.patientId) !== String(appointment.patientId)) {
+      return res.status(403).json({ error: 'Appointment and session do not belong to the same patient.' });
+    }
+    const patientId = appointment?.patientId || session?.patientId;
+    const patient = [...demoPatients.values()].find(item => String(item._id) === String(patientId));
+    if (!patient || String(patient.assignedDoctorId || 'doctor-default') !== String(req.doctorId)) {
+      return res.status(404).json({ error: 'Consultation not found in your care team.' });
+    }
+    if (appointment && String(appointment.roomUrl || '') !== String(roomUrl || '')) {
+      return res.status(403).json({ error: 'The consultation link does not match this appointment.' });
+    }
   }
 
   try {

@@ -291,7 +291,7 @@ export default function VideoCallPage() {
           transcript: [{ author: 'Consultation audio', message: transcriptText }],
           patientName: searchParams.get('patient') || 'the patient',
           doctorName: displayName
-        });
+        }, { headers: { Authorization: `Bearer ${localStorage.getItem('doctorSessionToken') || ''}` } });
         setStatus('Report generated and saved. Please review it in the doctor dashboard.');
       } catch (transcriptionError) {
         setError(`Automatic report failed: ${transcriptionError.response?.data?.error || transcriptionError.message}`);
@@ -324,7 +324,7 @@ export default function VideoCallPage() {
       await reportCompletionRef.current;
       socket.emit('call_ended', { room: roomId, endedBy: displayName });
       if (appointmentId) {
-        await axios.patch(`${backendUrl}/api/appointment/${encodeURIComponent(appointmentId)}/end-call`).catch(() => null);
+        await axios.patch(`${backendUrl}/api/appointment/${encodeURIComponent(appointmentId)}/end-call`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('doctorSessionToken') || ''}` } }).catch(() => null);
       }
     }
     navigate(role === 'doctor' ? '/doctor-dashboard' : '/dashboard');

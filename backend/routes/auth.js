@@ -30,7 +30,7 @@ const savePatient = async patient => {
 
 router.post('/register-simple', async (req, res) => {
   try {
-    const { fullName, email: submittedEmail, age, gender, phoneNumber, emergencyContact, password } = req.body || {};
+    const { fullName, email: submittedEmail, age, gender, phoneNumber, emergencyContact, doctorId, password } = req.body || {};
     const email = normalizeEmail(submittedEmail);
     const patientAge = Number(age);
 
@@ -46,6 +46,12 @@ router.post('/register-simple', async (req, res) => {
     if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
       return res.status(400).json({ error: 'Choose a password between 8 and 128 characters.' });
     }
+    if (!doctorId) return res.status(400).json({ error: 'Choose a doctor for your care team.' });
+
+    const assignedDoctor = mongoose.connection.readyState === 1
+      ? await Doctor.findById(doctorId).select('_id')
+      : demoDoctors.get(String(doctorId)) || (String(doctorId) === 'doctor-default' ? ensureDefaultDoctor() : null);
+    if (!assignedDoctor) return res.status(400).json({ error: 'The selected doctor is unavailable. Please choose another.' });
 
     const existingPatient = await findPatientByEmail(email);
     if (existingPatient) {
@@ -58,6 +64,7 @@ router.post('/register-simple', async (req, res) => {
     const patient = new Patient({
       fullName: String(fullName).trim(),
       email,
+      assignedDoctorId: String(assignedDoctor._id || assignedDoctor.id),
       age: patientAge,
       gender: String(gender).trim(),
       phoneNumber: String(phoneNumber).trim(),
@@ -69,7 +76,8 @@ router.post('/register-simple', async (req, res) => {
     return res.status(201).json({
       message: 'Account created successfully.',
       patientId: String(patient._id),
-      patientName: patient.fullName
+      patientName: patient.fullName,
+      assignedDoctorId: patient.assignedDoctorId
     });
   } catch (error) {
     console.error('Patient signup failed:', error.message);
@@ -112,7 +120,8 @@ router.post('/login', async (req, res) => {
     return res.status(200).json({
       message: 'Login successful',
       patientId: String(patient._id),
-      patientName: patient.fullName
+      patientName: patient.fullName,
+      assignedDoctorId: patient.assignedDoctorId || ''
     });
   } catch (err) {
     console.error('Patient login failed:', err.message);

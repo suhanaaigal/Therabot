@@ -148,7 +148,7 @@ export default function TherabotDoctorDashboard() {
     event.preventDefault();
     if (!selectedPatient) return;
     try {
-      await api.post('/api/appointment/book', { patientId: selectedPatient._id, patientName: selectedPatient.fullName, scheduledDate: newConsultation.date, scheduledTime: newConsultation.time });
+      await api.post('/api/appointment/book', { patientId: selectedPatient._id, patientName: selectedPatient.fullName, doctorName, scheduledDate: newConsultation.date, scheduledTime: newConsultation.time });
       setNewConsultation({ date: '', time: '' });
       await refreshAll();
       await inspectPatient(selectedPatient._id);

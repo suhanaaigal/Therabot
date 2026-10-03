@@ -6,7 +6,7 @@ const demoCallSessions = [];
 const demoNotifications = [];
 
 const ensureDefaultDoctor = () => {
-  const existing = demoDoctors.get('doctor-default') || [...demoDoctors.values()][0];
+  const existing = demoDoctors.get('doctor-default') || [...demoDoctors.values()].find(item => item.username === 'doctor');
   if (existing) return existing;
 
   const doctor = {

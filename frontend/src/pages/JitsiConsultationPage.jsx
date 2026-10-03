@@ -178,7 +178,7 @@ export default function JitsiConsultationPage() {
               transcript: [{ author: 'Consultation audio', message: transcript }],
               patientName: searchParams.get('patient') || 'the patient',
               doctorName: displayName
-            });
+            }, { headers: { Authorization: `Bearer ${localStorage.getItem('doctorSessionToken') || ''}` } });
             setStatus('Conversation transcribed. Report generated and saved in the doctor patient record.');
           } catch (processingError) {
             setError(`Automatic report failed: ${processingError.response?.data?.error || processingError.message}`);
@@ -226,7 +226,7 @@ export default function JitsiConsultationPage() {
       if (recorderRef.current?.state === 'recording') stopReportCapture();
       await reportCompletionRef.current;
       if (appointmentId) {
-        await axios.patch(`${backendUrl}/api/appointment/${encodeURIComponent(appointmentId)}/end-call`).catch(() => null);
+        await axios.patch(`${backendUrl}/api/appointment/${encodeURIComponent(appointmentId)}/end-call`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('doctorSessionToken') || ''}` } }).catch(() => null);
       }
     }
     jitsiApiRef.current?.executeCommand('hangup');

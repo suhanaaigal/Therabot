@@ -14,7 +14,7 @@ export default function AppointmentBooking({ patientName }) {
   const [time, setTime] = useState('');
   const [urgency, setUrgency] = useState('Routine');
   const [now, setNow] = useState(Date.now());
-  const [doctorId, setDoctorId] = useState('');
+  const [doctorId, setDoctorId] = useState(localStorage.getItem('assignedDoctorId') || '');
   const [slotStatus, setSlotStatus] = useState(null);
   const [myAppointments, setMyAppointments] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -37,8 +37,7 @@ export default function AppointmentBooking({ patientName }) {
       const res = await api.get('/api/appointment/doctors');
       const doctors = res.data || [];
       if (doctors.length > 0) {
-        const assignedDoctorId = localStorage.getItem('singleDoctorId') || doctors[0]._id;
-        localStorage.setItem('singleDoctorId', assignedDoctorId);
+        const assignedDoctorId = localStorage.getItem('assignedDoctorId') || doctors[0]._id;
         setDoctorId(assignedDoctorId);
       }
     } catch (err) {
@@ -96,18 +95,16 @@ export default function AppointmentBooking({ patientName }) {
       return;
     }
 
-    let currentDoctorId = doctorId || localStorage.getItem('singleDoctorId');
+    let currentDoctorId = localStorage.getItem('assignedDoctorId') || doctorId;
 
     if (!currentDoctorId) {
       try {
         const fallbackDoctor = await api.get('/api/appointment/doctors');
         const fallbackId = fallbackDoctor?.data?.[0]?._id || 'doctor-default';
-        localStorage.setItem('singleDoctorId', fallbackId);
         currentDoctorId = fallbackId;
         setDoctorId(fallbackId);
       } catch (err) {
         const fallbackId = 'doctor-default';
-        localStorage.setItem('singleDoctorId', fallbackId);
         currentDoctorId = fallbackId;
         setDoctorId(fallbackId);
       }
