@@ -69,10 +69,12 @@ export default function TherabotAuthPage({ role }) {
         : await api.post('/api/auth/login', { email: form.email, password: form.password });
       localStorage.setItem('patientId', response.data.patientId);
       localStorage.setItem('patientName', response.data.patientName || form.fullName);
+      localStorage.setItem('patientSessionToken', response.data.patientSessionToken);
       if (response.data.assignedDoctorId) {
         localStorage.setItem('assignedDoctorId', response.data.assignedDoctorId);
         localStorage.removeItem('singleDoctorId');
       }
+      localStorage.removeItem('doctorSessionToken');
       navigate('/dashboard');
     } catch (requestError) {
       const serverMessage = requestError?.response?.data?.error;

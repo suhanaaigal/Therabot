@@ -4,10 +4,12 @@ import AppointmentBooking from '../components/AppointmentBooking';
 import ChatRoom from '../components/ChatRoom';
 import DashboardShell from '../components/DashboardShell';
 import MindRelief from '../components/MindRelief';
+import MoodTrendDashboard from '../components/MoodTrendDashboard';
 
 const navItems = [
   { id: 'overview', label: 'Overview', icon: '⌂' },
   { id: 'checkin', label: 'Daily check-in', icon: '＋' },
+  { id: 'mood-trends', label: 'Mood trends', icon: '⌁' },
   { id: 'appointments', label: 'Appointments', icon: '▦' },
   { id: 'companion', label: 'AI companion', icon: '✳' },
   { id: 'relief', label: 'Mind relief', icon: '◌' }
@@ -16,6 +18,7 @@ const navItems = [
 const sectionCopy = {
   overview: ['Your care, at your pace', 'Thoughtful support for today, whenever you need it.'],
   checkin: ['Daily check-in', 'Take a quiet moment to note how you are feeling today.'],
+  'mood-trends': ['Mood trends', 'Notice patterns in the check-ins you’ve chosen to record.'],
   appointments: ['Appointments', 'Plan a conversation with your care team.'],
   companion: ['AI companion', 'A supportive place to put your thoughts into words.'],
   relief: ['Mind relief', 'Choose a gentle exercise and take a few minutes for yourself.']
@@ -28,6 +31,9 @@ export default function TherabotPatientDashboard() {
   const [message, setMessage] = useState('');
   const [appointments, setAppointments] = useState([]);
   const [appointmentsLoaded, setAppointmentsLoaded] = useState(false);
+  const [checkIns, setCheckIns] = useState([]);
+  const [checkInsLoading, setCheckInsLoading] = useState(true);
+  const [checkInsError, setCheckInsError] = useState('');
   const now = Date.now();
   const patientId = localStorage.getItem('patientId') || 'demo-patient-room';
   const patientName = localStorage.getItem('patientName') || 'Patient';
@@ -41,6 +47,16 @@ export default function TherabotPatientDashboard() {
 
   useEffect(() => {
     let mounted = true;
+    api.get(`/api/patient/${encodeURIComponent(patientId)}/checkins`)
+      .then(response => {
+        if (mounted) setCheckIns(response.data || []);
+      })
+      .catch(error => {
+        if (mounted) setCheckInsError(error?.response?.data?.error || 'We could not load your check-in history.');
+      })
+      .finally(() => {
+        if (mounted) setCheckInsLoading(false);
+      });
     api.get(`/api/appointment/patient/${patientId}`)
       .then(response => {
         if (mounted) setAppointments(response.data || []);
@@ -60,6 +76,13 @@ export default function TherabotPatientDashboard() {
       setResultBand(response.data.band);
       setMessage('Your check-in is saved. Thank you for taking a moment for yourself.');
       setForm({ sleepHours: '', moodScore: '', anxietyLevel: '', journalText: '' });
+      try {
+        const historyResponse = await api.get(`/api/patient/${encodeURIComponent(patientId)}/checkins`);
+        setCheckIns(historyResponse.data || []);
+        setCheckInsError('');
+      } catch {
+        setCheckInsError('Your check-in was saved, but we could not refresh the trend yet.');
+      }
     } catch (error) {
       setMessage(error?.response?.data?.error || 'We could not save your check-in. Please try again.');
     }
@@ -118,6 +141,7 @@ export default function TherabotPatientDashboard() {
 
   const content = activeSection === 'overview' ? renderOverview()
     : activeSection === 'checkin' ? <section className="panel panel-pad checkin-panel"><CheckinForm form={form} setForm={setForm} onSubmit={handleSubmit} message={message} resultBand={resultBand} /></section>
+      : activeSection === 'mood-trends' ? <MoodTrendDashboard checkIns={checkIns} loading={checkInsLoading} error={checkInsError} onCheckIn={() => setActiveSection('checkin')} />
       : activeSection === 'appointments' ? <section className="panel panel-pad service-panel"><AppointmentBooking patientName={patientName} /></section>
         : activeSection === 'relief' ? <section className="panel panel-pad service-panel"><MindRelief /></section>
           : <section className="panel panel-pad service-panel"><ChatRoom roomId={patientId} senderName={patientName} mode="ai" /></section>;

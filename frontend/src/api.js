@@ -12,7 +12,7 @@ const localDevelopmentBackendUrl = import.meta.env.DEV
 export const backendUrl = hostedBackendUrl || localDevelopmentBackendUrl;
 export const api = axios.create({ baseURL: backendUrl });
 api.interceptors.request.use(config => {
-	const doctorSessionToken = localStorage.getItem('doctorSessionToken');
-	if (doctorSessionToken) config.headers.Authorization = `Bearer ${doctorSessionToken}`;
+	const sessionToken = localStorage.getItem('doctorSessionToken') || localStorage.getItem('patientSessionToken');
+	if (sessionToken) config.headers.Authorization = `Bearer ${sessionToken}`;
 	return config;
 });

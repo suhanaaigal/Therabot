@@ -7,6 +7,7 @@ const Patient = require('../models/Patient');
 const Notification = require('../models/Notification');
 const { demoAppointments, demoCallSessions, demoDoctors, demoNotifications, demoPatients, ensureDefaultDoctor } = require('../demoStore');
 const { requireDoctorSession } = require('../doctorSession');
+const { requirePatientSession } = require('../patientSession');
 
 const isDemoRecord = (value = '') => /\b(test|demo|dummy|sample)\b/i.test(String(value));
 
@@ -220,9 +221,10 @@ router.get('/check-availability', async (req, res) => {
   }
 });
 
-router.post('/request', async (req, res) => {
+router.post('/request', requirePatientSession, async (req, res) => {
   try {
     let { patientId, patientName, doctorId, doctorName, scheduledDate, scheduledTime, urgency } = req.body;
+    if (String(req.patientId) !== String(patientId)) return res.status(403).json({ error: 'You can only request appointments for your own account.' });
 
     const fallbackDoctor = await getDefaultDoctor();
     const resolvedDoctorId = doctorId || fallbackDoctor?._id?.toString();
@@ -293,8 +295,9 @@ router.post('/request', async (req, res) => {
   }
 });
 
-router.get('/patient/:patientId', async (req, res) => {
+router.get('/patient/:patientId', requirePatientSession, async (req, res) => {
   try {
+    if (String(req.patientId) !== String(req.params.patientId)) return res.status(403).json({ error: 'You can only view your own appointments.' });
     if (isDemoMode()) {
       const appointments = demoAppointments.filter(item => String(item.patientId) === String(req.params.patientId));
       return res.status(200).json(appointments);
@@ -507,8 +510,9 @@ router.patch('/:id/decline', requireDoctorSession, async (req, res) => {
   }
 });
 
-router.get('/patient/:patientId/notifications', async (req, res) => {
+router.get('/patient/:patientId/notifications', requirePatientSession, async (req, res) => {
   try {
+    if (String(req.patientId) !== String(req.params.patientId)) return res.status(403).json({ error: 'You can only view your own notifications.' });
     if (isDemoMode()) {
       return res.status(200).json(demoNotifications.filter(item => String(item.patientId) === String(req.params.patientId)));
     }

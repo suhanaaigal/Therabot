@@ -265,6 +265,38 @@ button { -webkit-tap-highlight-color: transparent; }
 .patient-shell .overview-note-panel .page-eyebrow { margin: 0 0 5px; color: var(--patient-coral); }
 .patient-shell .overview-note-panel h3 { color: var(--patient-ink); font-size: 14px; }
 .patient-shell .overview-note-panel p:last-child { color: var(--patient-muted); font-size: 11px; }
+.mood-trend-heading { align-items: center; flex-wrap: wrap; }
+.mood-range-control { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid #dce8e5; border-radius: 5px; background: #f7faf8; }
+.mood-range-control button { min-width: 58px; min-height: 31px; padding: 0 9px; border: 0; border-radius: 3px; background: transparent; color: #627b78; cursor: pointer; font-size: 10px; font-weight: 700; }
+.mood-range-control button.is-active { background: #176b72; color: white; }
+.mood-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-bottom: 17px; }
+.mood-summary { display: grid; gap: 7px; min-width: 0; padding: 13px; border: 1px solid #e3ece8; border-radius: 5px; background: #fbfcfa; }
+.mood-summary > span { color: #668078; font-size: 10px; }
+.mood-summary strong { color: #173449; font: 700 23px/1 'Manrope', sans-serif; }
+.mood-summary strong small { margin-left: 4px; color: #80928b; font: 600 10px 'DM Sans', sans-serif; }
+.mood-summary-positive { border-top: 2px solid #278276; }
+.mood-summary-anxiety { border-top: 2px solid #dc8a70; }
+.mood-summary-sleep { border-top: 2px solid #6f91ad; }
+.mood-summary-count { border-top: 2px solid #b4bd70; }
+.mood-chart-wrap { padding: 11px 8px 4px; border: 1px solid #e7eeeb; border-radius: 5px; background: #fff; }
+.mood-chart { display: block; width: 100%; height: auto; min-height: 190px; overflow: visible; }
+.mood-chart-gridline { stroke: #e8efec; stroke-width: 1; }
+.mood-chart-axis-label { fill: #81918b; font: 10px 'DM Sans', sans-serif; }
+.mood-chart-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.mood-chart-line-mood { stroke: #176b72; }
+.mood-chart-line-anxiety { stroke: #dc795e; stroke-dasharray: 5 4; }
+.mood-chart-point { stroke: white; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.mood-chart-point-mood { fill: #176b72; }
+.mood-chart-point-anxiety { fill: #dc795e; }
+.mood-chart-legend { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 0 10px 8px; color: #556e68; font-size: 10px; }
+.mood-chart-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.mood-chart-legend small { margin-left: auto; color: #82918a; font-size: 9px; }
+.mood-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+.mood-legend-mood { background: #176b72; }
+.mood-legend-anxiety { background: #dc795e; }
+.mood-empty-state { display: grid; justify-items: center; gap: 8px; padding: 42px 16px; border: 1px dashed #ccd8ce; border-radius: 5px; text-align: center; }
+.mood-empty-state p { margin: 0; color: #34483b; font: 700 14px 'Manrope', sans-serif; }
+.mood-empty-state > span { margin-bottom: 9px; color: #718078; font-size: 11px; }
 
 .home-page { min-height: 100vh; overflow: hidden; background: #f4f7f4; }
 .home-nav { display: flex; align-items: center; justify-content: space-between; max-width: 1360px; margin: auto; padding: 22px 7vw; }
@@ -356,6 +388,8 @@ button { -webkit-tap-highlight-color: transparent; }
   .patient-shell .overview-service-grid { gap: 9px; }
   .patient-shell .overview-service-copy small { max-width: 270px; }
   .patient-shell .overview-note-panel { align-items: flex-start; }
+  .mood-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mood-chart-legend small { flex-basis: 100%; margin-left: 0; line-height: 1.5; }
   .doctor-overview-grid { grid-template-columns: 1fr; }
   .quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .quick-link { min-height: 113px; flex-direction: column; gap: 9px; padding: 12px; }

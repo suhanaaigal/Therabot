@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const crypto = require('node:crypto');
 const { signDoctorSession } = require('../doctorSession');
 const { hashPatientPassword, verifyPatientPassword } = require('../patientPassword');
+const { signPatientSession } = require('../patientSession');
 const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
 const { demoPatients, demoDoctors, ensureDefaultDoctor } = require('../demoStore');
@@ -77,7 +78,8 @@ router.post('/register-simple', async (req, res) => {
       message: 'Account created successfully.',
       patientId: String(patient._id),
       patientName: patient.fullName,
-      assignedDoctorId: patient.assignedDoctorId
+      assignedDoctorId: patient.assignedDoctorId,
+      patientSessionToken: signPatientSession(patient._id)
     });
   } catch (error) {
     console.error('Patient signup failed:', error.message);
@@ -121,7 +123,8 @@ router.post('/login', async (req, res) => {
       message: 'Login successful',
       patientId: String(patient._id),
       patientName: patient.fullName,
-      assignedDoctorId: patient.assignedDoctorId || ''
+      assignedDoctorId: patient.assignedDoctorId || '',
+      patientSessionToken: signPatientSession(patient._id)
     });
   } catch (err) {
     console.error('Patient login failed:', err.message);

@@ -14,6 +14,8 @@ export default function DashboardShell({ role, name, active, onNavigate, items, 
     }
     localStorage.removeItem('patientId');
     localStorage.removeItem('patientName');
+    localStorage.removeItem('patientSessionToken');
+    localStorage.removeItem('assignedDoctorId');
     navigate('/patient');
   };
 
