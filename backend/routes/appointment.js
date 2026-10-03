@@ -11,6 +11,27 @@ const { requirePatientSession } = require('../patientSession');
 
 const isDemoRecord = (value = '') => /\b(test|demo|dummy|sample)\b/i.test(String(value));
 
+const createDoctorUpdateNotification = async ({ patientId, patientName, message, severity }) => {
+  if (isDemoMode()) {
+    if (demoNotifications.some(item => String(item.patientId) === String(patientId) && item.type === 'doctor_update' && item.message === message)) return;
+    demoNotifications.unshift({
+      _id: `demo-notification-${Date.now()}`,
+      patientId,
+      patientName,
+      type: 'doctor_update',
+      severity,
+      message,
+      createdAt: new Date()
+    });
+    return;
+  }
+
+  const exists = await Notification.findOne({ patientId, type: 'doctor_update', message });
+  if (!exists) {
+    await Notification.create({ patientId, patientName, type: 'doctor_update', severity, message, sentToEmergencyContact: false, sentToDoctor: false });
+  }
+};
+
 const isFutureSlot = (scheduledDate, scheduledTime) => {
   if (!scheduledDate) return false;
 
@@ -368,14 +389,11 @@ router.patch('/:id/approve', requireDoctorSession, async (req, res) => {
       appointment.callStarted = false;
       appointment.callEnded = false;
 
-      demoNotifications.unshift({
-        _id: `demo-notification-${Date.now()}`,
+      await createDoctorUpdateNotification({
         patientId: appointment.patientId,
         patientName: appointment.patientName,
-        type: 'doctor_update',
         severity: 'info',
-        message: `Your appointment with ${appointment.doctorName} was approved for ${appointment.scheduledDate} at ${appointment.scheduledTime}. Your in-app call link is ready.`,
-        createdAt: new Date()
+        message: `Your appointment with ${appointment.doctorName} was approved for ${appointment.scheduledDate} at ${appointment.scheduledTime}. Your in-app call link is ready.`
       });
 
       const existingSession = demoCallSessions.find(item => String(item.roomUrl) === String(appointment.roomUrl));
@@ -421,14 +439,11 @@ router.patch('/:id/approve', requireDoctorSession, async (req, res) => {
     appointment.callEnded = false;
     await appointment.save();
 
-    await Notification.create({
+    await createDoctorUpdateNotification({
       patientId: appointment.patientId,
       patientName: appointment.patientName,
-      type: 'doctor_update',
       severity: 'info',
-      message: `Your appointment with ${appointment.doctorName} has been approved for ${appointment.scheduledDate} at ${appointment.scheduledTime}. Join here: ${roomUrl}`,
-      sentToEmergencyContact: false,
-      sentToDoctor: false
+      message: `Your appointment with ${appointment.doctorName} has been approved for ${appointment.scheduledDate} at ${appointment.scheduledTime}. Join here: ${roomUrl}`
     });
 
     const session = await CallSession.findOne({ roomUrl: roomUrl });
@@ -463,16 +478,13 @@ router.patch('/:id/decline', requireDoctorSession, async (req, res) => {
       if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
       appointment.status = 'Declined';
       appointment.declinedAt = new Date();
-      demoNotifications.unshift({
-        _id: `demo-notification-${Date.now()}`,
+      await createDoctorUpdateNotification({
         patientId: appointment.patientId,
         patientName: appointment.patientName,
-        type: 'doctor_update',
         severity: 'warning',
         message: appointment.urgency === 'Routine'
           ? 'The doctor declined this routine appointment. Please book another time.'
-          : 'The doctor declined this appointment. Please contact the clinic for next steps.',
-        createdAt: new Date()
+          : 'The doctor declined this appointment. Please contact the clinic for next steps.'
       });
       return res.status(200).json({
         message: 'Doctor is busy at this time. Please book a different time.',
@@ -491,14 +503,11 @@ router.patch('/:id/decline', requireDoctorSession, async (req, res) => {
     appointment.declinedAt = new Date();
     await appointment.save();
 
-    await Notification.create({
+    await createDoctorUpdateNotification({
       patientId: appointment.patientId,
       patientName: appointment.patientName,
-      type: 'doctor_update',
       severity: 'warning',
-      message: `Doctor is busy at this time. Please book a different time for ${appointment.scheduledDate} at ${appointment.scheduledTime}.`,
-      sentToEmergencyContact: false,
-      sentToDoctor: false
+      message: `Doctor is busy at this time. Please book a different time for ${appointment.scheduledDate} at ${appointment.scheduledTime}.`
     });
 
     res.status(200).json({

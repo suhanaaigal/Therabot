@@ -18,6 +18,7 @@ export default function AppointmentBooking({ patientName }) {
   const [slotStatus, setSlotStatus] = useState(null);
   const [myAppointments, setMyAppointments] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const patientId = localStorage.getItem('patientId') || 'demo-patient-id';
 
   useEffect(() => {
@@ -135,18 +136,22 @@ export default function AppointmentBooking({ patientName }) {
     }
   };
 
-  const declinedNotification = myAppointments.find(item => item.status === 'Declined' && item.urgency === 'Routine');
-  const upcomingAppointments = myAppointments;
+  const isCurrentAppointment = appointment => {
+    if (!['Pending', 'Approved'].includes(appointment.status) || appointment.callEnded) return false;
+    const appointmentDate = new Date(`${appointment.scheduledDate}T${appointment.scheduledTime}`).getTime();
+    return appointment.status === 'Pending' || !Number.isFinite(appointmentDate) || appointmentDate + (60 * 60 * 1000) >= now;
+  };
+  const currentAppointments = myAppointments.filter(isCurrentAppointment);
+  const appointmentHistory = myAppointments.filter(appointment => !isCurrentAppointment(appointment));
+  const visibleNotifications = notifications
+    .filter(notification => notification?.message)
+    .filter((notification, index, all) => all.findIndex(item => item.message === notification.message) === index)
+    .slice(0, 1);
 
   return (
     <div style={{ border: '1px solid #ccc', padding: '20px', borderRadius: '8px', maxWidth: '500px', margin: '20px auto', background: '#fdfdfd' }}>
       <h3>Schedule Video Consultation</h3>
-      {declinedNotification && (
-        <div style={{ marginBottom: '14px', padding: '10px 12px', borderRadius: '8px', background: '#fff1f2', border: '1px solid #fecdd3', color: '#9f1239', fontWeight: '700' }}>
-          Doctor is busy at this time. Please book a different time.
-        </div>
-      )}
-      {notifications.slice(0, 3).map(notification => (
+      {visibleNotifications.map(notification => (
         <div key={notification._id} style={{ marginBottom: '10px', padding: '10px 12px', borderRadius: '8px', background: notification.severity === 'warning' ? '#fff7ed' : '#ecfeff', border: `1px solid ${notification.severity === 'warning' ? '#fed7aa' : '#a5f3fc'}`, color: '#164e63' }}>
           <strong>{notification.severity === 'warning' ? 'Appointment update' : 'Appointment approved'}</strong>
           <div style={{ marginTop: '4px' }}>{notification.message}</div>
@@ -184,10 +189,10 @@ export default function AppointmentBooking({ patientName }) {
 
       <h4 style={{ marginTop: '25px' }}>Your Consultations:</h4>
       <ul style={{ paddingLeft: '20px' }}>
-        {upcomingAppointments.length === 0 ? (
+        {currentAppointments.length === 0 ? (
           <li style={{ color: '#64748b' }}>No appointments yet.</li>
         ) : (
-          upcomingAppointments.map(app => (
+          currentAppointments.map(app => (
             <li key={app._id} style={{ marginBottom: '18px' }}>
               <div><strong>{app.doctorName || 'Doctor'}</strong> — {app.scheduledDate} at {app.scheduledTime}</div>
               <div style={{ fontSize: '13px', color: '#475569' }}>Status: {app.status}</div>
@@ -227,6 +232,24 @@ export default function AppointmentBooking({ patientName }) {
           ))
         )}
       </ul>
+
+      {appointmentHistory.length > 0 && (
+        <div style={{ marginTop: '18px', borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
+          <button type="button" onClick={() => setShowHistory(value => !value)} style={{ border: 0, padding: 0, background: 'transparent', color: '#475569', cursor: 'pointer', fontWeight: '700' }}>
+            {showHistory ? 'Hide consultation history' : `Show consultation history (${appointmentHistory.length})`}
+          </button>
+          {showHistory && (
+            <ul style={{ paddingLeft: '20px', marginBottom: 0 }}>
+              {appointmentHistory.map(app => (
+                <li key={app._id} style={{ marginTop: '12px', color: '#475569' }}>
+                  <div><strong>{app.doctorName || 'Doctor'}</strong> — {app.scheduledDate} at {app.scheduledTime}</div>
+                  <div style={{ fontSize: '13px' }}>Status: {app.callEnded ? 'Completed' : app.status}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div style={{ marginTop: '12px', fontSize: '13px', color: '#475569' }}>
         Only the assigned doctor and patient can access the Jitsi room for this consultation.
