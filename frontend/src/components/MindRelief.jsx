@@ -3,7 +3,17 @@ import React, { useEffect, useState } from 'react';
 const activities = [
   { id: 'breathing', label: 'Guided Breathing' },
   { id: 'grounding', label: '5-4-3-2-1 Grounding' },
-  { id: 'garden', label: 'Calm Garden' }
+  { id: 'garden', label: 'Calm Garden' },
+  { id: 'bubbles', label: 'Bubble Calm' }
+];
+
+const makeBubbles = () => [
+  { id: Date.now(), left: 12, top: 28, size: 42 },
+  { id: Date.now() + 1, left: 31, top: 62, size: 30 },
+  { id: Date.now() + 2, left: 52, top: 23, size: 54 },
+  { id: Date.now() + 3, left: 70, top: 57, size: 36 },
+  { id: Date.now() + 4, left: 84, top: 31, size: 26 },
+  { id: Date.now() + 5, left: 63, top: 78, size: 44 }
 ];
 
 export default function MindRelief() {
@@ -12,6 +22,8 @@ export default function MindRelief() {
   const [breathingActive, setBreathingActive] = useState(false);
   const [groundingStep, setGroundingStep] = useState(0);
   const [gardenPoints, setGardenPoints] = useState(0);
+  const [bubbleRound, setBubbleRound] = useState({ active: false, score: 0, timeLeft: 30 });
+  const [bubbles, setBubbles] = useState(makeBubbles);
 
   useEffect(() => {
     if (!breathingActive) return undefined;
@@ -24,6 +36,17 @@ export default function MindRelief() {
     }, 4000);
     return () => window.clearInterval(interval);
   }, [breathingActive]);
+
+  useEffect(() => {
+    if (!bubbleRound.active) return undefined;
+    const interval = window.setInterval(() => {
+      setBubbleRound(current => {
+        if (current.timeLeft <= 1) return { ...current, active: false, timeLeft: 0 };
+        return { ...current, timeLeft: current.timeLeft - 1 };
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [bubbleRound.active]);
 
   const groundingPrompts = [
     'Name 5 things you can see.',
@@ -75,6 +98,34 @@ export default function MindRelief() {
             ))}
           </div>
           <div style={{ marginTop: '10px', color: '#315b55', fontSize: '13px' }}>{Math.min(gardenPoints, 6)} of 6 calm stones placed</div>
+        </div>
+      )}
+
+      {activity === 'bubbles' && (
+        <div style={{ padding: '16px 10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#315b55', fontSize: '13px', fontWeight: '700' }}>
+            <span>{bubbleRound.score} calm pops</span>
+            <span>{bubbleRound.timeLeft}s</span>
+          </div>
+          <div style={{ position: 'relative', minHeight: '220px', margin: '14px 0', overflow: 'hidden', borderRadius: '14px', background: 'linear-gradient(160deg, #dff6ec, #c4e4ef)', boxShadow: 'inset 0 0 30px rgba(255,255,255,.55)' }}>
+            {bubbles.map(bubble => (
+              <button
+                key={bubble.id}
+                type="button"
+                aria-label="Pop calm bubble"
+                onClick={() => {
+                  if (!bubbleRound.active) return;
+                  setBubbleRound(current => ({ ...current, score: current.score + 1 }));
+                  setBubbles(current => [...current.filter(item => item.id !== bubble.id), { ...bubble, id: Date.now(), left: (bubble.left + 23) % 82 + 8, top: (bubble.top + 31) % 70 + 12 }]);
+                }}
+                style={{ position: 'absolute', left: `${bubble.left}%`, top: `${bubble.top}%`, width: `${bubble.size}px`, height: `${bubble.size}px`, transform: 'translate(-50%, -50%)', border: '2px solid rgba(255,255,255,.8)', borderRadius: '50%', background: 'rgba(255,255,255,.38)', boxShadow: 'inset 8px 8px 12px rgba(255,255,255,.65), 0 5px 12px rgba(67,130,145,.12)', cursor: bubbleRound.active ? 'pointer' : 'default', transition: 'transform .15s ease' }}
+              />
+            ))}
+            {!bubbleRound.active && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: '20px', color: '#315b55', fontSize: '14px', fontWeight: '700', textAlign: 'center' }}>{bubbleRound.timeLeft === 0 ? `Lovely. You found ${bubbleRound.score} moments of calm.` : 'Let the bubbles drift. Pop as many as you like.'}</div>}
+          </div>
+          <button type="button" onClick={() => { setBubbleRound({ active: true, score: 0, timeLeft: 30 }); setBubbles(makeBubbles()); }} style={{ padding: '10px 16px', background: '#167d6a', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+            {bubbleRound.timeLeft === 0 ? 'Play another round' : 'Start bubble calm'}
+          </button>
         </div>
       )}
     </div>
