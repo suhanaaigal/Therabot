@@ -119,6 +119,27 @@ router.get('/notifications', requireDoctorSession, async (req, res) => {
   }
 });
 
+router.patch('/notifications/:id/review', requireDoctorSession, async (req, res) => {
+  try {
+    if (isDemoMode()) {
+      const notification = demoNotifications.find(item => String(item._id) === String(req.params.id));
+      if (!notification || !findDemoPatient(notification.patientId, req.doctorId)) return res.status(404).json({ error: 'Alert not found.' });
+      notification.reviewedAt = notification.reviewedAt || new Date();
+      return res.status(200).json(notification);
+    }
+
+    const notification = await Notification.findById(req.params.id);
+    if (!notification) return res.status(404).json({ error: 'Alert not found.' });
+    const patient = await Patient.findOne({ _id: notification.patientId, assignedDoctorId: String(req.doctorId) }).select('_id');
+    if (!patient) return res.status(404).json({ error: 'Alert not found.' });
+    notification.reviewedAt = notification.reviewedAt || new Date();
+    await notification.save();
+    return res.status(200).json(notification);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/patient/:id/report', requireDoctorSession, async (req, res) => {
   try {
     const patientId = req.params.id;

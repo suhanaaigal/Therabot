@@ -9,6 +9,19 @@ const isAppointmentLive = (scheduledDate, scheduledTime, callEnded = false) => {
   return now >= appointmentDate.getTime() - (2 * 60 * 1000) && now <= appointmentDate.getTime() + 60 * 60 * 1000;
 };
 
+const getAppointmentCountdown = (scheduledDate, scheduledTime, currentTime) => {
+  const appointmentTime = new Date(`${scheduledDate}T${scheduledTime}`).getTime();
+  if (!Number.isFinite(appointmentTime)) return '';
+  const difference = appointmentTime - currentTime;
+  if (difference <= 0 && difference > -(60 * 60 * 1000)) return 'Your consultation window is open.';
+  if (difference <= 0) return '';
+  const totalMinutes = Math.ceil(difference / 60000);
+  if (totalMinutes < 60) return `Starts in ${totalMinutes} minute${totalMinutes === 1 ? '' : 's'}.`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `Starts in ${hours}h${minutes ? ` ${minutes}m` : ''}.`;
+};
+
 export default function AppointmentBooking({ patientName }) {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -95,6 +108,10 @@ export default function AppointmentBooking({ patientName }) {
       alert('Please select a date and time.');
       return;
     }
+    if (slotStatus && !slotStatus.available) {
+      alert('That time is no longer available. Please choose another time.');
+      return;
+    }
 
     let currentDoctorId = localStorage.getItem('assignedDoctorId') || doctorId;
 
@@ -159,7 +176,7 @@ export default function AppointmentBooking({ patientName }) {
       ))}
       <form onSubmit={handleBook}>
         <label>Select Date:</label><br/>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} required style={{ width: '100%', padding: '6px', marginBottom: '10px' }} /><br/>
+        <input type="date" min={new Date().toISOString().slice(0, 10)} value={date} onChange={e => setDate(e.target.value)} required style={{ width: '100%', padding: '6px', marginBottom: '10px' }} /><br/>
 
         <label>Select Time:</label><br/>
         <input type="time" value={time} onChange={e => setTime(e.target.value)} required style={{ width: '100%', padding: '6px', marginBottom: '12px' }} /><br/>
@@ -171,16 +188,23 @@ export default function AppointmentBooking({ patientName }) {
           <option value="Emergency">Emergency</option>
         </select><br/>
 
+        {slotStatus && (
+          <div role="status" style={{ marginBottom: '12px', padding: '9px 10px', borderRadius: '6px', background: slotStatus.available ? '#ecfdf5' : '#fff1f2', border: `1px solid ${slotStatus.available ? '#a7f3d0' : '#fecdd3'}`, color: slotStatus.available ? '#166534' : '#9f1239', fontSize: '13px' }}>
+            {slotStatus.available ? 'This time is available.' : 'This time is already booked. Please choose another time.'}
+          </div>
+        )}
+
         <button
           type="submit"
+          disabled={Boolean(slotStatus && !slotStatus.available)}
           style={{
             width: '100%',
             padding: '10px',
-            background: '#007bff',
+            background: slotStatus && !slotStatus.available ? '#94a3b8' : '#007bff',
             color: '#fff',
             border: 'none',
             borderRadius: '4px',
-            cursor: 'pointer'
+            cursor: slotStatus && !slotStatus.available ? 'not-allowed' : 'pointer'
           }}
         >
           Request Appointment
@@ -196,6 +220,9 @@ export default function AppointmentBooking({ patientName }) {
             <li key={app._id} style={{ marginBottom: '18px' }}>
               <div><strong>{app.doctorName || 'Doctor'}</strong> — {app.scheduledDate} at {app.scheduledTime}</div>
               <div style={{ fontSize: '13px', color: '#475569' }}>Status: {app.status}</div>
+              {app.status === 'Approved' && !app.callEnded && getAppointmentCountdown(app.scheduledDate, app.scheduledTime, now) && (
+                <div style={{ marginTop: '6px', color: '#0f766e', fontSize: '13px', fontWeight: '700' }}>{getAppointmentCountdown(app.scheduledDate, app.scheduledTime, now)}</div>
+              )}
               {app.status === 'Declined' ? (
                 <div style={{ marginTop: '8px', color: '#9f1239', fontWeight: '700' }}>
                   Doctor declined this routine appointment. Please book another time.

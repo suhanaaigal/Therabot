@@ -8,6 +8,7 @@ const notificationSchema = new mongoose.Schema({
   message: { type: String, required: true },
   sentToEmergencyContact: { type: Boolean, default: false },
   sentToDoctor: { type: Boolean, default: true },
+  reviewedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
 });
 

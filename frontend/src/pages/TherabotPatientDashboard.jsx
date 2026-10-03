@@ -34,6 +34,7 @@ export default function TherabotPatientDashboard() {
   const [checkIns, setCheckIns] = useState([]);
   const [checkInsLoading, setCheckInsLoading] = useState(true);
   const [checkInsError, setCheckInsError] = useState('');
+  const [showFirstCheckInPrompt, setShowFirstCheckInPrompt] = useState(false);
   const now = Date.now();
   const patientId = localStorage.getItem('patientId') || 'demo-patient-room';
   const patientName = localStorage.getItem('patientName') || 'Patient';
@@ -67,6 +68,12 @@ export default function TherabotPatientDashboard() {
       });
     return () => { mounted = false; };
   }, [patientId]);
+
+  useEffect(() => {
+    if (!checkInsLoading && !checkInsError && checkIns.length === 0) {
+      setShowFirstCheckInPrompt(true);
+    }
+  }, [checkIns, checkInsError, checkInsLoading]);
 
   const handleSubmit = async event => {
     event.preventDefault();
@@ -151,6 +158,20 @@ export default function TherabotPatientDashboard() {
       <div className="page-heading"><div><p className="page-eyebrow">Patient care</p><h1 className="page-title">{sectionCopy[activeSection][0]}</h1><p className="page-subtitle">{sectionCopy[activeSection][1]}</p></div></div>
       {content}
       <nav className="mobile-nav" aria-label="Patient navigation">{navItems.map(item => <button key={item.id} type="button" className={`rail-link ${activeSection === item.id ? 'is-active' : ''}`} onClick={() => setActiveSection(item.id)}><span className="rail-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span></button>)}</nav>
+      {showFirstCheckInPrompt && (
+        <div className="checkin-prompt-backdrop" role="presentation">
+          <section className="checkin-prompt" role="dialog" aria-modal="true" aria-labelledby="first-checkin-title">
+            <button className="checkin-prompt-close" type="button" aria-label="Close check-in prompt" onClick={() => setShowFirstCheckInPrompt(false)}>×</button>
+            <p className="page-eyebrow">A small first step</p>
+            <h2 id="first-checkin-title">How are you feeling today?</h2>
+            <p>Take a quiet moment to record your sleep, mood, and anxiety. It helps you notice patterns and helps your care team understand how to support you.</p>
+            <div className="checkin-prompt-actions">
+              <button className="action-button" type="button" onClick={() => { setShowFirstCheckInPrompt(false); setActiveSection('checkin'); }}>Start check-in <span aria-hidden="true">→</span></button>
+              <button className="quiet-button" type="button" onClick={() => setShowFirstCheckInPrompt(false)}>Not now</button>
+            </div>
+          </section>
+        </div>
+      )}
     </DashboardShell>
   );
 }
@@ -168,6 +189,12 @@ function CheckinForm({ form, setForm, onSubmit, message, resultBand, compact = f
         <div className="form-actions"><button className="action-button" type="submit">Save check-in <span aria-hidden="true">→</span></button></div>
       </form>
       {message && <div className="success-banner" role="status">{message}{resultBand && <> Current status: <strong>{resultBand}</strong>.</>}</div>}
+      {resultBand === 'Red' && (
+        <div className="alert-row critical" role="alert" style={{ marginTop: '12px' }}>
+          <strong>Please reach out for immediate support.</strong>
+          <p>If you may be in immediate danger, contact local emergency services now. Otherwise, contact your doctor or a trusted person and let them know how you are feeling.</p>
+        </div>
+      )}
     </>
   );
 }

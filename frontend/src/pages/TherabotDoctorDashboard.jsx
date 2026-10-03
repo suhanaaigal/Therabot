@@ -36,7 +36,8 @@ export default function TherabotDoctorDashboard() {
     .filter(item => item.status === 'Approved' && item.roomUrl)
     .filter((item, index, all) => all.findIndex(other => String(other._id) === String(item._id)) === index)
     .sort((first, second) => new Date(`${first.scheduledDate}T${first.scheduledTime}`) - new Date(`${second.scheduledDate}T${second.scheduledTime}`));
-  const navigation = baseNavigation.map(item => item.id === 'alerts' ? { ...item, count: notifications.length } : item);
+  const unreviewedAlertCount = notifications.filter(notification => !notification.reviewedAt).length;
+  const navigation = baseNavigation.map(item => item.id === 'alerts' ? { ...item, count: unreviewedAlertCount } : item);
 
   useEffect(() => {
     if (localStorage.getItem('isDoctorAuthenticated') !== 'true') {
@@ -71,6 +72,15 @@ export default function TherabotDoctorDashboard() {
   async function fetchNotifications() {
     try { const response = await api.get('/api/doctor/notifications'); setNotifications(response.data || []); }
     catch (error) { console.error('Could not load alerts', error); }
+  }
+
+  async function reviewNotification(notificationId) {
+    try {
+      await api.patch(`/api/doctor/notifications/${encodeURIComponent(notificationId)}/review`);
+      setNotifications(previous => previous.map(notification => String(notification._id) === String(notificationId) ? { ...notification, reviewedAt: new Date().toISOString() } : notification));
+    } catch (error) {
+      window.alert(error?.response?.data?.error || 'Could not mark this alert as reviewed.');
+    }
   }
   async function fetchSessions() {
     try {
@@ -189,7 +199,7 @@ export default function TherabotDoctorDashboard() {
     ? <PatientRecord {...{ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, newConsultation, setNewConsultation, scheduleConsultation, downloadPatientReport, goBack: () => { setSelectedPatient(null); setActiveSection('patients'); } }} />
     : activeSection === 'patients' ? <PatientDirectory patients={visiblePatients} search={search} setSearch={setSearch} inspectPatient={inspectPatient} deletePatient={deletePatient} />
       : activeSection === 'appointments' ? <AppointmentView patients={patients} requests={requests} appointments={appointments} approve={approveAppointment} decline={declineAppointment} doctorId={localStorage.getItem('doctorAuthId') || localStorage.getItem('doctorId')} doctorName={doctorName} onBooked={refreshAll} />
-        : activeSection === 'alerts' ? <AlertView notifications={notifications} />
+        : activeSection === 'alerts' ? <AlertView notifications={notifications} reviewNotification={reviewNotification} />
           : <Overview {...{ patients: sortedPatients, upcomingCalls, requests, notifications, inspectPatient, setActiveSection, refreshAll, approve: approveAppointment, decline: declineAppointment, doctorName }} />;
 
   return (
@@ -305,8 +315,35 @@ function AppointmentList({ items, doctorName }) {
   })}</div>;
 }
 
-function AlertView({ notifications }) {
-  return <section className="panel panel-pad"><div className="panel-head"><div><h2 className="panel-title">Recent alerts</h2><p className="panel-caption">Updates and notifications from patient activity.</p></div></div>{notifications.length ? <div className="alert-list">{notifications.map(item => <div className={`alert-row ${item.severity === 'critical' ? 'critical' : ''}`} key={item._id}><strong>{item.patientName || 'Patient'} · {item.severity || 'Update'}</strong><p>{item.message}</p></div>)}</div> : <div className="empty-state">No active alerts.</div>}</section>;
+function AlertView({ notifications, reviewNotification }) {
+  return <section className="panel panel-pad"><div className="panel-head"><div><h2 className="panel-title">Recent alerts</h2><p className="panel-caption">{notifications.filter(item => !item.reviewedAt).length} unreviewed alert{notifications.filter(item => !item.reviewedAt).length === 1 ? '' : 's'}. Review each update after following up.</p></div></div>{notifications.length ? <div className="alert-list">{notifications.map(item => <div className={`alert-row ${item.severity === 'critical' ? 'critical' : ''} ${item.reviewedAt ? 'is-reviewed' : ''}`} key={item._id}><div className="alert-row-head"><strong>{item.patientName || 'Patient'} · {item.severity || 'Update'}</strong>{item.reviewedAt ? <span className="reviewed-label">Reviewed</span> : <button className="text-action" type="button" onClick={() => reviewNotification(item._id)}>Mark reviewed</button>}</div><p>{item.message}</p></div>)}</div> : <div className="empty-state">No active alerts.</div>}</section>;
+}
+
+function weeklyMoodTrend(checkIns) {
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return Array.from({ length: 4 }, (_, index) => {
+    const end = new Date(today);
+    end.setDate(today.getDate() - ((3 - index) * 7));
+    const start = new Date(end);
+    start.setDate(end.getDate() - 6);
+    const entries = checkIns.filter(item => {
+      const date = new Date(item.date);
+      return date >= start && date <= end;
+    });
+    const average = entries.length ? (entries.reduce((sum, item) => sum + Number(item.moodScore || 0), 0) / entries.length).toFixed(1) : null;
+    return { label: start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), average, count: entries.length };
+  });
+}
+
+function followUpStatus(checkIns, appointments) {
+  const latestCheckIn = checkIns[0] ? new Date(checkIns[0].date).getTime() : 0;
+  const checkInOverdue = !latestCheckIn || Date.now() - latestCheckIn > 7 * 24 * 60 * 60 * 1000;
+  const missedAppointments = appointments.filter(item => {
+    const appointmentTime = new Date(`${item.scheduledDate}T${item.scheduledTime}`).getTime();
+    return item.status === 'Approved' && !item.callEnded && Number.isFinite(appointmentTime) && appointmentTime < Date.now() - 60 * 60 * 1000;
+  }).length;
+  return { checkInOverdue, missedAppointments };
 }
 
 function PatientRecord({ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, newConsultation, setNewConsultation, scheduleConsultation, downloadPatientReport, goBack }) {
@@ -314,6 +351,8 @@ function PatientRecord({ selectedPatient, patientHistory, patientAppointments, p
   const [recoveryCodeExpiry, setRecoveryCodeExpiry] = useState('');
   const [recoveryCodeError, setRecoveryCodeError] = useState('');
   const [recoveryCodeLoading, setRecoveryCodeLoading] = useState(false);
+  const weeklyTrend = weeklyMoodTrend(patientHistory);
+  const followUp = followUpStatus(patientHistory, patientAppointments);
 
   async function createRecoveryCode() {
     if (!window.confirm(`Create a one-time password recovery code for ${selectedPatient.fullName}? Give it only to the patient after verifying their identity.`)) return;
@@ -334,6 +373,8 @@ function PatientRecord({ selectedPatient, patientHistory, patientAppointments, p
   return <div className="dash-section"><section className="patient-record-banner panel"><div className="patient-record-avatar">{initials(selectedPatient.fullName)}</div><div className="record-identity"><h2>{selectedPatient.fullName}</h2><p>{selectedPatient.email || 'No email listed'}</p><p>{selectedPatient.age || 'Age not listed'} · {selectedPatient.gender || 'Gender not listed'} · {selectedPatient.phoneNumber || 'No phone listed'} · Emergency: {selectedPatient.emergencyContact || 'Not listed'}</p></div><span className={`risk-badge ${riskClass(selectedPatient.currentRiskBand)}`}>{selectedPatient.currentRiskBand || 'Green'} risk</span><button className="quiet-button record-back-mobile" type="button" onClick={goBack}>← Patient list</button></section>
     <section className="panel panel-pad"><div className="panel-head"><div><h2 className="panel-title">Patient account access</h2><p className="panel-caption">Create a single-use recovery code after verifying the patient’s identity. Deliver it privately; it expires in 30 minutes.</p></div><button className="quiet-button" type="button" disabled={recoveryCodeLoading} onClick={createRecoveryCode}>{recoveryCodeLoading ? 'Creating…' : 'Create recovery code'}</button></div>{recoveryCodeError && <div className="auth-error" role="alert">{recoveryCodeError}</div>}{recoveryCode && <div className="success-banner" role="status"><strong>One-time code:</strong> <code>{recoveryCode}</code><br />Expires {new Date(recoveryCodeExpiry).toLocaleString()}. This code is shown only here; create a new one if it is lost.</div>}</section>
     <div className="metric-grid"><Metric label="Average mood" value={patientReport?.averages?.mood ?? '—'} foot="Out of 10" icon="☼" /><Metric label="Average anxiety" value={patientReport?.averages?.anxiety ?? '—'} foot="Out of 10" tone="coral" icon="◌" /><Metric label="Average sleep" value={patientReport?.averages?.sleep ?? '—'} foot="Hours per night" icon="◷" /><Metric label="Care activity" value={patientAppointments.length + patientSessions.length} foot="Appointments and calls" icon="▦" /></div>
+    <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Weekly mood trend</h3><p className="panel-caption">Average mood score for the last four weeks.</p></div></div><div className="weekly-trend-grid">{weeklyTrend.map(week => <div className="weekly-trend-item" key={week.label}><div className="weekly-trend-bar-wrap"><div className="weekly-trend-bar" style={{ height: `${week.average ? Math.max(8, Number(week.average) * 10) : 4}%` }} /></div><strong>{week.average || '—'}</strong><small>{week.label}</small><span>{week.count} check-in{week.count === 1 ? '' : 's'}</span></div>)}</div></section>
+    {(followUp.checkInOverdue || followUp.missedAppointments > 0) && <section className="alert-row" role="status"><div className="alert-row-head"><strong>Follow-up needed</strong><span className="reviewed-label">Care task</span></div><p>{followUp.checkInOverdue ? 'No check-in has been recorded in the last 7 days.' : ''}{followUp.checkInOverdue && followUp.missedAppointments > 0 ? ' ' : ''}{followUp.missedAppointments > 0 ? `${followUp.missedAppointments} approved consultation${followUp.missedAppointments === 1 ? '' : 's'} may need follow-up.` : ''}</p></section>}
     {patientReport?.notes && <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Clinical snapshot</h3><p className="panel-caption">Summary from recorded check-ins.</p></div></div><p className="snapshot-text">{patientReport.notes}</p></section>}
     <div className="report-columns"><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Daily check-ins</h3><p className="panel-caption">Newest reflections and wellbeing signals.</p></div></div>{patientHistory.length ? <div className="data-list">{patientHistory.map(item => <article className="history-item" key={item._id || item.date}><div className="history-date">{new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}<span className={`risk-badge ${riskClass(item.calculatedBand)}`}>{item.calculatedBand}</span></div><div className="history-metrics">Mood <strong>{item.moodScore}/10</strong><span>·</span> Anxiety <strong>{item.anxietyLevel}/10</strong><span>·</span> Sleep <strong>{item.sleepHours}h</strong></div>{item.journalText && <p className="history-journal">{item.journalText}</p>}</article>)}</div> : <div className="empty-state">No check-ins recorded.</div>}</section>
       <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Consultations & reports</h3><p className="panel-caption">Transcripts and clinician-review drafts.</p></div><span className="count-badge">{patientSessions.filter(session => session.clinicalNote?.text).length} reports</span></div>{patientSessions.length ? <div className="data-list">{patientSessions.map(session => <article className="session-item" key={session._id}><div className="panel-head"><div><strong>{session.scheduledDate} · {session.scheduledTime}</strong><small className="session-state">{session.transcript?.length ? 'Conversation captured' : 'No transcript'} · {session.clinicalNote?.text ? 'Report ready' : 'No report yet'}</small></div><button className="quiet-button" type="button" onClick={() => { setSelectedSession(session); setTranscriptText((session.transcript || []).map(item => `${item.author}: ${item.message}`).join('\n')); }}>{selectedSession?._id === session._id ? 'Selected' : 'Review'}</button></div><p className="session-summary">{session.summary || 'Summary appears after a conversation is captured.'}</p>{session.clinicalNote?.text && <details><summary className="details-trigger">View clinical report</summary><div className="report-note">{session.clinicalNote.text}</div><small className="review-note">Draft for clinician review before use.</small></details>}{session.transcript?.length > 0 && <details className="transcript-details"><summary className="details-trigger muted">View transcript ({session.transcript.length} segment{session.transcript.length === 1 ? '' : 's'})</summary><div className="transcript-list">{session.transcript.map((entry, index) => <p key={`${session._id}-${index}`}><strong>{entry.author}:</strong> {entry.message}</p>)}</div></details>}</article>)}</div> : <div className="empty-state">No consultation history recorded.</div>}</section></div>
