@@ -22,6 +22,13 @@ const getAppointmentCountdown = (scheduledDate, scheduledTime, currentTime) => {
   return `Starts in ${hours}h${minutes ? ` ${minutes}m` : ''}.`;
 };
 
+const isNotificationRelevant = (notification, currentTime) => {
+  const approvedSlot = String(notification?.message || '').match(/approved for (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2})/i);
+  if (!approvedSlot) return true;
+  const appointmentTime = new Date(`${approvedSlot[1]}T${approvedSlot[2]}`).getTime();
+  return !Number.isFinite(appointmentTime) || appointmentTime + (60 * 60 * 1000) >= currentTime;
+};
+
 export default function AppointmentBooking({ patientName }) {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -162,6 +169,7 @@ export default function AppointmentBooking({ patientName }) {
   const appointmentHistory = myAppointments.filter(appointment => !isCurrentAppointment(appointment));
   const visibleNotifications = notifications
     .filter(notification => notification?.message)
+    .filter(notification => isNotificationRelevant(notification, now))
     .filter((notification, index, all) => all.findIndex(item => item.message === notification.message) === index)
     .slice(0, 1);
 

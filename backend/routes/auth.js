@@ -190,7 +190,6 @@ router.post('/doctor-login', async (req, res) => {
     }
 
     const doctor = await Doctor.findOne({ username }).catch(() => null);
-    const defaultDoctor = ensureDefaultDoctor();
 
     if (doctor) {
       if (doctor.password !== password) {
@@ -211,6 +210,22 @@ router.post('/doctor-login', async (req, res) => {
       });
     }
 
+    if (mongoose.connection.readyState === 1 && username === 'doctor' && password === 'doctor123') {
+      const persistentDoctor = await Doctor.findOneAndUpdate(
+        { username: 'doctor' },
+        { username: 'doctor', password: 'doctor123', fullName: 'Dr. Suhana Aigal', specialty: 'Mental Wellness' },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+      return res.status(200).json({
+        message: 'Doctor login successful',
+        doctorName: 'Dr. Suhana Aigal',
+        username: persistentDoctor.username,
+        doctorId: String(persistentDoctor._id),
+        doctorSessionToken: signDoctorSession(persistentDoctor._id)
+      });
+    }
+
+    const defaultDoctor = ensureDefaultDoctor();
     if (username === defaultDoctor.username && password === defaultDoctor.password) {
       demoDoctors.set(defaultDoctor._id, defaultDoctor);
       return res.status(200).json({

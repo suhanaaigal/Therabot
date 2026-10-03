@@ -34,6 +34,7 @@ export default function TherabotDoctorDashboard() {
   const visiblePatients = sortedPatients.filter(patient => (patient.fullName || '').toLowerCase().includes(search.toLowerCase()));
   const upcomingCalls = [...requests, ...appointments]
     .filter(item => item.status === 'Approved' && item.roomUrl)
+    .filter(isUpcomingConsultation)
     .filter((item, index, all) => all.findIndex(other => String(other._id) === String(item._id)) === index)
     .sort((first, second) => new Date(`${first.scheduledDate}T${first.scheduledTime}`) - new Date(`${second.scheduledDate}T${second.scheduledTime}`));
   const unreviewedAlertCount = notifications.filter(notification => !notification.reviewedAt).length;
@@ -215,6 +216,12 @@ function riskValue(band) { return ({ Red: 0, Orange: 1, Yellow: 2, Green: 3 })[b
 function riskClass(band) { return String(band || 'Green').toLowerCase(); }
 function initials(name) { return String(name || 'P').split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase(); }
 
+function isUpcomingConsultation(item) {
+  if (item.callEnded) return false;
+  const appointmentTime = new Date(`${item.scheduledDate}T${item.scheduledTime}`).getTime();
+  return !Number.isFinite(appointmentTime) || appointmentTime + (60 * 60 * 1000) >= Date.now();
+}
+
 function Overview({ patients, upcomingCalls, requests, notifications, inspectPatient, setActiveSection, refreshAll, approve, decline, doctorName }) {
   const urgentCount = patients.filter(patient => ['Red', 'Orange'].includes(patient.currentRiskBand)).length;
   return <div className="dash-section">
@@ -257,7 +264,7 @@ function AppointmentView({ patients, requests, appointments, approve, decline, d
   const [bookingError, setBookingError] = useState('');
   const [bookingLoading, setBookingLoading] = useState(false);
   const pending = requests.filter(item => item.status === 'Pending');
-  const approved = [...appointments, ...requests].filter(item => item.status === 'Approved' && item.roomUrl).filter((item, index, all) => all.findIndex(other => String(other._id) === String(item._id)) === index);
+  const approved = [...appointments, ...requests].filter(item => item.status === 'Approved' && item.roomUrl).filter(isUpcomingConsultation).filter((item, index, all) => all.findIndex(other => String(other._id) === String(item._id)) === index);
   async function submitBooking(event) {
     event.preventDefault();
     const patient = patients.find(item => String(item._id) === String(booking.patientId));
