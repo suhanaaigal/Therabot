@@ -19,6 +19,9 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
   const [chatError, setChatError] = useState('');
   const [basicMode, setBasicMode] = useState(false);
   const recognizerRef = useRef(null);
+  const messageEndRef = useRef(null);
+  const requestInFlightRef = useRef(false);
+  const [failedRequest, setFailedRequest] = useState(null);
   const [messageList, setMessageList] = useState([
     {
       author: 'AI Companion',
@@ -64,6 +67,10 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
     }
   }, [roomId, mode]);
 
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messageList, isTyping]);
+
   const startVoiceInput = () => {
     if (!recognizerRef.current) {
       alert('Speech-to-text is not supported in this browser.');
@@ -77,6 +84,7 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
   const sendMessage = async (customText) => {
     const textToSend = (customText || message || '').trim();
     if (!textToSend) return;
+    if (mode !== 'live' && requestInFlightRef.current) return;
 
     const userMessage = {
       room: roomId,
@@ -94,32 +102,37 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
 
     setMessageList((list) => [...list, userMessage]);
     setMessage('');
+    const conversationHistory = messageList.slice(-8).map((item) => ({
+      role: item.author === senderName ? 'user' : 'assistant',
+      content: item.message
+    }));
+    await requestAiReply(textToSend, conversationHistory);
+  };
+
+  const requestAiReply = async (textToSend, conversationHistory) => {
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
     setIsTyping(true);
     setChatError('');
 
     try {
-      const conversationHistory = messageList.slice(-8).map((item) => ({
-        role: item.author === senderName ? 'user' : 'assistant',
-        content: item.message
-      }));
-
       const res = await api.post('/api/ai/chat', {
         message: textToSend,
         history: conversationHistory
       });
       setBasicMode(res.data.provider === 'basic-fallback');
-
-      const aiReply = {
+      setFailedRequest(null);
+      setMessageList((list) => [...list, {
         author: 'AI Companion',
         message: res.data.reply,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isAi: true
-      };
-
-      setMessageList((list) => [...list, aiReply]);
+      }]);
     } catch (error) {
+      setFailedRequest({ message: textToSend, history: conversationHistory });
       setChatError(error?.response?.data?.error || 'The companion could not reply. Your message is still here; please try again.');
     } finally {
+      requestInFlightRef.current = false;
       setIsTyping(false);
     }
   };
@@ -170,7 +183,7 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
 
       {chatError && <div role="alert" className="chat-error-notice">{chatError}</div>}
 
-      <div style={{ height: '360px', overflowY: 'auto', padding: '18px', background: '#f7f9ff' }}>
+      <div aria-live="polite" aria-relevant="additions" style={{ height: '360px', overflowY: 'auto', padding: '18px', background: '#f7f9ff' }}>
         {messageList.map((content, index) => {
           const isMine = content.author === senderName;
           const isAi = content.isAi || content.author === 'AI Companion';
@@ -211,19 +224,23 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
             </div>
           </div>
         )}
+        <div ref={messageEndRef} />
       </div>
 
-      <div style={{ display: 'flex', gap: '10px', padding: '14px 18px 18px', background: '#ffffff' }}>
+      {chatError && failedRequest && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 18px 12px', background: '#fff' }}>
+          <button type="button" className="quiet-button" disabled={isTyping} onClick={() => requestAiReply(failedRequest.message, failedRequest.history)}>Retry response</button>
+        </div>
+      )}
+
+      <form onSubmit={(event) => { event.preventDefault(); sendMessage(); }} style={{ display: 'flex', gap: '10px', padding: '14px 18px 18px', background: '#ffffff' }}>
         <input
           type="text"
           value={message}
           placeholder={mode === 'live' ? 'Type a message...' : 'Share how you are feeling today...'}
           onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              sendMessage();
-            }
-          }}
+          aria-label="Message"
+          disabled={mode !== 'live' && isTyping}
           style={{
             flex: 1,
             border: '1px solid #dfe7f3',
@@ -236,6 +253,9 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
         <button
           type="button"
           onClick={startVoiceInput}
+          disabled={mode !== 'live' && isTyping}
+          aria-label={listening ? 'Stop voice input' : 'Start voice input'}
+          title={listening ? 'Stop voice input' : 'Start voice input'}
           style={{
             padding: '0 14px',
             borderRadius: '12px',
@@ -249,20 +269,22 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
           {listening ? '●' : '🎙️'}
         </button>
         <button
-          onClick={() => sendMessage()}
+          type="submit"
+          disabled={!message.trim() || (mode !== 'live' && isTyping)}
           style={{
             padding: '0 18px',
             borderRadius: '12px',
             border: 'none',
             background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
             color: '#fff',
-            cursor: 'pointer',
+            cursor: !message.trim() || (mode !== 'live' && isTyping) ? 'not-allowed' : 'pointer',
+            opacity: !message.trim() || (mode !== 'live' && isTyping) ? 0.6 : 1,
             fontWeight: 600
           }}
         >
           Send
         </button>
-      </div>
+      </form>
     </div>
   );
 }
