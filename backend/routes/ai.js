@@ -16,63 +16,8 @@ const getConfiguredModel = useOllama => useOllama
 
 const generateContextualFallback = (message, conversation = []) => {
   const latestUserMessage = String(message || '').replace(/\s+/g, ' ').trim();
-  const lowerMessage = latestUserMessage.toLowerCase();
-  const meaningfulPreviousMessage = [...conversation].reverse().find(item => {
-    const content = String(item?.content || '').replace(/\s+/g, ' ').trim();
-    return item?.role === 'user' && content && !/^(hi|hii|hello|hey|good morning|good afternoon|good evening|ok|okay|thanks|thank you)[!. ]*$/i.test(content);
-  });
-  const previousMessage = String(meaningfulPreviousMessage?.content || '').replace(/\s+/g, ' ').trim();
-  const previousContext = previousMessage && previousMessage.toLowerCase() !== lowerMessage ? previousMessage.slice(0, 160) : '';
-
-  if (/^(hi|hii|hello|hey|good morning|good afternoon|good evening)[!. ]*$/i.test(lowerMessage)) {
-    return 'Hi, I’m here with you. What has been on your mind today?';
-  }
-  if (/^(thanks|thank you|ok|okay)[!. ]*$/i.test(lowerMessage)) {
-    return 'You’re welcome. We can take this one step at a time. What would feel helpful now?';
-  }
-
-  const projectContext = /project|assignment|work|deadline|study|college|school|exam/i.test(`${lowerMessage} ${previousContext}`);
-
-  if (/overwhelmed|too much|can't cope|cannot cope|stressed|stress|burnout/i.test(lowerMessage)) {
-    return projectContext
-      ? `A project can feel overwhelming when all the tasks blur together. Let’s make it smaller: write down the deadline, then choose the one next action that would take 10 minutes or less. What part is creating the most pressure: the deadline, the amount of work, or not knowing where to start?`
-      : 'That sounds like a lot to carry at once. For the next minute, put both feet on the floor, take one slow breath out, and name the next thing that truly needs your attention. What feels heaviest right now?';
-  }
-  if (/anxious|anxiety|panic|worried|worry|nervous|fear/i.test(lowerMessage)) {
-    return `Anxiety can make everything feel urgent, even when you do not have to solve it all right now. Try looking around and naming five things you can see, then let your exhale be a little longer than your inhale. Is the anxiety connected to something specific, or does it feel more general today?`;
-  }
-  if (/sleep|insomnia|can't sleep|cannot sleep|tired|exhausted/i.test(lowerMessage)) {
-    return `Poor sleep can make the whole day feel harder. Tonight, keep the goal gentle rather than forcing sleep: dim one light, put the phone a little farther away, and try a slow body scan from your forehead to your feet. How has your sleep been recently?`;
-  }
-  if (/lonely|alone|isolated|no one|nobody/i.test(lowerMessage)) {
-    return `Feeling alone can be painful, and you do not have to make it sound smaller than it is. Could you send one simple message to someone safe, such as “I could use a little company today”? If reaching out feels too much, we can stay with what this moment feels like together.`;
-  }
-  if (/grounding|calm down|calming|relax|breathe|breathing/i.test(lowerMessage)) {
-    return `Let’s make this simple. Notice one thing you can see, one thing you can feel, and one sound nearby. Then take a slow breath out. You do not need to feel completely calm; just a little more present is enough.`;
-  }
-  if (/sad|down|low|crying|depressed/i.test(lowerMessage)) {
-    return `I am sorry this feels heavy today. You do not need to explain it perfectly. What would feel most supportive right now: being heard, finding one small distraction, or thinking through a next step?`;
-  }
-
-  if (/not feeling good|not okay|don't feel good|do not feel good|feeling bad|feel awful|feel terrible/i.test(lowerMessage)) {
-    return `I’m sorry you’re having a difficult moment. Do you mean you’re feeling emotionally low, physically unwell, or a bit of both? If you feel unsafe or may hurt yourself, please tell someone nearby and contact local emergency or crisis support now.`;
-  }
-
-  if (projectContext) {
-    return `It sounds like your project is taking up a lot of mental space. We can sort it out without tackling everything at once. What is the next concrete thing you need to finish or decide?`;
-  }
-
-  if (/angry|frustrated|irritated|annoyed/i.test(lowerMessage)) {
-    return `It sounds like something has pushed you past your limit. Before deciding what to do next, take a short pause and give yourself room to cool down. What happened just before you started feeling this frustrated?`;
-  }
-  if (/relationship|friend|family|partner|breakup|argument/i.test(lowerMessage)) {
-    return `Relationships can bring up a lot at once. You do not have to solve the whole situation in one conversation. What is hurting most right now: what happened, what was said, or what you are worried will happen next?`;
-  }
-  if (/motivat|procrastinat|can't focus|cannot focus|distracted/i.test(lowerMessage)) {
-    return `You do not need to feel fully motivated before beginning. Try choosing a two-minute version of the task, then stop or continue based on how it feels. What is the smallest part you could start with?`;
-  }
-
-  return 'Thank you for telling me. I’m here to help you slow the moment down and make sense of it, one piece at a time. What feels most important to talk through first?';
+  const contextAvailable = Array.isArray(conversation) && conversation.some(item => item?.content);
+  return `The AI provider is unavailable right now, so I cannot generate a real conversational response. Please check the Ollama connection and try again.${contextAvailable ? ' Your conversation is still here.' : ''}`;
 };
 
 const generateAiReply = async (userMessage = '', conversation = []) => {
