@@ -12,7 +12,7 @@ services:
       - key: AI_PROVIDER
         value: openai
       - key: OPENAI_MODEL
-        value: gpt-4o-mini
+        value: openai/gpt-oss-20b
       - key: OPENAI_API_KEY
         sync: false
 

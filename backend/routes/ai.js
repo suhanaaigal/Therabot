@@ -12,7 +12,7 @@ const crisisMessage = `I want to take this seriously. If you feel like you might
 const detectCrisis = (text = '') => /\b(kill myself|end my life|suicid(?:e|al)|hurt myself|self[- ]harm|don't want to live|do not want to live|wish i were dead|no reason to live|i may hurt myself|i am in immediate danger|i am unsafe)\b/i.test(text);
 const getConfiguredModel = useOllama => useOllama
   ? process.env.OLLAMA_MODEL || 'llama3.2'
-  : process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  : process.env.OPENAI_MODEL || 'openai/gpt-oss-20b';
 
 const generateAiReply = async (userMessage = '', conversation = []) => {
   const message = String(userMessage || '').trim();

@@ -14,9 +14,9 @@
   - FRONTEND_URL
   - AI_PROVIDER=openai
   - OPENAI_API_KEY (set privately in Render; do not commit it)
-  - OPENAI_MODEL=gpt-4o-mini
+  - OPENAI_MODEL=openai/gpt-oss-20b
 
-The AI companion requires a real model provider and does not use hardcoded conversational replies. Set `AI_PROVIDER=openai`, `OPENAI_MODEL` (for example `gpt-4o-mini`), and `OPENAI_API_KEY` privately on the backend service. To use Ollama for local development instead, set `AI_PROVIDER=ollama`, `OLLAMA_MODEL`, and `OPENAI_BASE_URL` to the Ollama OpenAI-compatible endpoint. If the provider is unavailable, the chat endpoint returns an error rather than pretending to be an AI response.
+The AI companion requires a real model provider and does not use hardcoded conversational replies. For Groq, set `AI_PROVIDER=openai`, `OPENAI_BASE_URL=https://api.groq.com/openai/v1`, `OPENAI_MODEL=openai/gpt-oss-20b`, and `OPENAI_API_KEY` privately on the backend service. To use Ollama for local development instead, set `AI_PROVIDER=ollama`, `OLLAMA_MODEL`, and `OPENAI_BASE_URL` to the Ollama OpenAI-compatible endpoint. If the provider is unavailable, the chat endpoint returns an error rather than pretending to be an AI response.
 
 Patient signup and sign-in use backend email/password authentication. New passwords are stored as salted scrypt hashes; legacy plaintext passwords are upgraded to hashes after a successful login. Firebase is not used for patient authentication. Email verification and password recovery are currently unavailable. Existing Firebase-linked patient accounts have no backend password and must be migrated by the care team before they can sign in; do not delete their patient records as a shortcut because related care history references those records.
 
