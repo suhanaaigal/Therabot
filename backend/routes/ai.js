@@ -16,8 +16,28 @@ const getConfiguredModel = useOllama => useOllama
 
 const generateContextualFallback = (message, conversation = []) => {
   const latestUserMessage = String(message || '').replace(/\s+/g, ' ').trim();
-  const contextAvailable = Array.isArray(conversation) && conversation.some(item => item?.content);
-  return `The AI provider is unavailable right now, so I cannot generate a real conversational response. Please check the Ollama connection and try again.${contextAvailable ? ' Your conversation is still here.' : ''}`;
+  const lowerMessage = latestUserMessage.toLowerCase();
+  const previousUserMessage = [...(Array.isArray(conversation) ? conversation : [])]
+    .reverse()
+    .find(item => item?.role === 'user' && item?.content)?.content;
+  const context = previousUserMessage ? ` You previously mentioned "${String(previousUserMessage).trim().slice(0, 120)}".` : '';
+
+  if (/^(hi|hello|hey)\b/i.test(lowerMessage)) {
+    return 'Hi, I am here with you. What has been feeling most difficult today?';
+  }
+  if (/sleep|insomnia|tired|rest/i.test(lowerMessage)) {
+    return 'Poor sleep can make stress feel heavier. If you can, try putting your phone aside for a few minutes, take five slow breaths, and write down one concern to revisit tomorrow. How many hours have you been sleeping lately?';
+  }
+  if (/anxious|anxiety|panic|overwhelmed|stress|stressed/i.test(lowerMessage)) {
+    return `That sounds overwhelming, and it makes sense that it is affecting you.${context} Try focusing only on the next small task or taking five slow breaths. What part feels hardest right now?`;
+  }
+  if (/grounding|calm|relax|breath/i.test(lowerMessage)) {
+    return 'Let us try a short grounding exercise: name five things you can see, four things you can feel, and three sounds you can hear. Which step feels easiest to start with?';
+  }
+  if (/lonely|alone|exhausted|sad|down/i.test(lowerMessage)) {
+    return 'I am sorry this feels lonely and exhausting. You do not have to solve everything at once; consider sending a simple message to someone you trust and taking one gentle step for yourself. Is there someone you feel safe contacting?';
+  }
+  return `Thank you for sharing that.${context} I am listening. What would feel like the most helpful next step right now?`;
 };
 
 const generateAiReply = async (userMessage = '', conversation = []) => {

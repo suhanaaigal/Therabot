@@ -178,7 +178,7 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
       )}
 
       {mode !== 'live' && basicMode && (
-        <div role="status" className="chat-mode-notice">Basic mode is active. For model-generated conversation, configure an AI provider for the backend.</div>
+        <div role="status" className="chat-mode-notice">Guided companion mode is active. You can continue the conversation normally.</div>
       )}
 
       {chatError && <div role="alert" className="chat-error-notice">{chatError}</div>}
