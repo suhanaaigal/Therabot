@@ -259,7 +259,7 @@ function PatientDirectory({ patients, search, setSearch, inspectPatient, deleteP
 
 function AppointmentView({ patients, requests, appointments, approve, decline, doctorId, doctorName, onBooked }) {
   const [bookingOpen, setBookingOpen] = useState(false);
-  const [booking, setBooking] = useState({ patientId: '' });
+  const [booking, setBooking] = useState({ patientId: '', scheduledDate: '', scheduledTime: '' });
   const [bookingError, setBookingError] = useState('');
   const [bookingLoading, setBookingLoading] = useState(false);
   const pending = requests.filter(item => item.status === 'Pending');
@@ -278,9 +278,11 @@ function AppointmentView({ patients, requests, appointments, approve, decline, d
         patientId: patient._id,
         patientName: patient.fullName,
         doctorId,
-        doctorName
+        doctorName,
+        scheduledDate: booking.scheduledDate,
+        scheduledTime: booking.scheduledTime
       });
-      setBooking({ patientId: '' });
+      setBooking({ patientId: '', scheduledDate: '', scheduledTime: '' });
       setBookingOpen(false);
       await onBooked();
     } catch (error) {
@@ -294,9 +296,11 @@ function AppointmentView({ patients, requests, appointments, approve, decline, d
     <section className="panel panel-pad">
       <div className="panel-head"><div><h2 className="panel-title">Appointments</h2><p className="panel-caption">Book a visit for a patient or respond to incoming appointment requests.</p></div><button className="action-button" type="button" onClick={() => { setBookingOpen(value => !value); setBookingError(''); }}>{bookingOpen ? 'Cancel booking' : 'Book appointment +'}</button></div>
       {bookingOpen && <form className="doctor-booking-form" onSubmit={submitBooking}>
-        <div className="panel-head"><div><h3 className="panel-title">New consultation</h3><p className="panel-caption">Choose a patient to open an immediate consultation room.</p></div></div>
+        <div className="panel-head"><div><h3 className="panel-title">New appointment</h3><p className="panel-caption">Choose a patient and schedule a consultation time.</p></div></div>
         <div className="form-grid">
           <div className="form-field full"><label htmlFor="doctor-book-patient">Patient</label><select id="doctor-book-patient" value={booking.patientId} onChange={event => setBooking(current => ({ ...current, patientId: event.target.value }))} required><option value="">Select a patient</option>{patients.map(patient => <option key={patient._id} value={patient._id}>{patient.fullName}{patient.email ? ` · ${patient.email}` : ''}</option>)}</select></div>
+          <div className="form-field"><label htmlFor="doctor-book-date">Date</label><input id="doctor-book-date" type="date" min={new Date().toISOString().slice(0, 10)} value={booking.scheduledDate} onChange={event => setBooking(current => ({ ...current, scheduledDate: event.target.value }))} required /></div>
+          <div className="form-field"><label htmlFor="doctor-book-time">Time</label><input id="doctor-book-time" type="time" value={booking.scheduledTime} onChange={event => setBooking(current => ({ ...current, scheduledTime: event.target.value }))} required /></div>
         </div>
         {bookingError && <div className="auth-error" role="alert">{bookingError}</div>}
         <div className="form-actions"><button className="action-button" type="submit" disabled={bookingLoading}>{bookingLoading ? 'Booking…' : 'Confirm appointment'}</button></div>
