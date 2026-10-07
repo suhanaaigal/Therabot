@@ -102,6 +102,24 @@ const generateFallbackClinicalNote = (transcript = [], patientName = 'the patien
   ].join('\n\n');
 };
 
+const generateTranscriptSummary = (transcript = []) => {
+  const messages = (Array.isArray(transcript) ? transcript : [])
+    .map(item => ({
+      author: String(item?.author || 'Speaker'),
+      message: String(item?.message || '').replace(/\s+/g, ' ').trim()
+    }))
+    .filter(item => item.message);
+
+  if (!messages.length) return 'No transcript captured yet.';
+
+  const transcriptText = messages.map(item => item.message).join(' ');
+  const concernKeywords = ['stress', 'anxiety', 'sleep', 'mood', 'fear', 'panic', 'sad', 'depressed', 'lonely', 'overwhelmed', 'burnout'];
+  const concerns = concernKeywords.filter(keyword => transcriptText.toLowerCase().includes(keyword));
+  const excerpt = transcriptText.slice(0, 240);
+
+  return `Consultation captured ${messages.length} transcript segment${messages.length === 1 ? '' : 's'}. Themes discussed: ${concerns.length ? concerns.slice(0, 4).join(', ') : 'general wellbeing and current concerns'}. Key excerpt: "${excerpt}"`;
+};
+
 const generateClinicalNote = async (transcript = [], patientName = 'the patient', doctorName = 'the clinician') => {
   const transcriptText = (Array.isArray(transcript) ? transcript : [])
     .map(item => `${item.author || 'Speaker'}: ${item.message || ''}`.trim())
@@ -282,6 +300,7 @@ router.post('/clinical-note', requireDoctorSession, async (req, res) => {
       if (!session) return res.status(404).json({ error: 'Session not found' });
       session.clinicalNote = clinicalNote;
       session.transcript = savedTranscript;
+      session.summary = generateTranscriptSummary(savedTranscript);
       session.isRecorded = savedTranscript.length > 0;
       await session.save();
       return res.status(200).json({ message: 'SOAP note drafted successfully', clinicalNote, session });
@@ -310,6 +329,7 @@ router.post('/clinical-note', requireDoctorSession, async (req, res) => {
     if (!session) return res.status(404).json({ error: 'Session not found' });
     session.clinicalNote = clinicalNote;
     session.transcript = savedTranscript;
+    session.summary = generateTranscriptSummary(savedTranscript);
     session.isRecorded = savedTranscript.length > 0;
     return res.status(200).json({ message: 'SOAP note drafted successfully', clinicalNote, session });
   } catch (error) {
