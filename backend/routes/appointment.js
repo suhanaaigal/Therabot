@@ -623,9 +623,12 @@ router.post('/book', requireDoctorSession, async (req, res) => {
   try {
     let { patientId, patientName, doctorName, scheduledDate, scheduledTime } = req.body;
     const doctorId = String(req.doctorId);
+    const immediateDate = new Date();
+    scheduledDate = scheduledDate || immediateDate.toISOString().slice(0, 10);
+    scheduledTime = scheduledTime || immediateDate.toTimeString().slice(0, 5);
 
-    if (!patientId || !doctorId || !scheduledDate || !scheduledTime) {
-      return res.status(400).json({ error: 'patientId, doctorId, scheduledDate and scheduledTime are required.' });
+    if (!patientId || !doctorId) {
+      return res.status(400).json({ error: 'patientId and doctorId are required.' });
     }
 
     const patient = isDemoMode()
@@ -636,7 +639,7 @@ router.post('/book', requireDoctorSession, async (req, res) => {
 
     if (isDemoMode()) {
       const doctor = demoDoctors.get(doctorId) || getDemoDoctor();
-      const conflict = await getAppointmentConflict(doctorId, scheduledDate, scheduledTime);
+      const roomUrl = makeJitsiRoom();
       const appointment = {
         _id: `demo-apt-${Date.now()}`,
         patientId,
@@ -645,9 +648,9 @@ router.post('/book', requireDoctorSession, async (req, res) => {
         doctorName: doctor?.fullName || doctorName || 'Doctor',
         scheduledDate,
         scheduledTime,
-        status: 'Pending',
-        roomUrl: '',
-        callStarted: false,
+        status: 'Approved',
+        roomUrl,
+        callStarted: true,
         approvedAt: null,
         declinedAt: null,
         createdAt: new Date()
@@ -658,7 +661,7 @@ router.post('/book', requireDoctorSession, async (req, res) => {
         patientId,
         patientName: patientName || 'Patient',
         doctorName: doctor?.fullName || doctorName || 'Doctor',
-        roomUrl: appointment.roomUrl || makeJitsiRoom(),
+        roomUrl,
         scheduledDate,
         scheduledTime,
         transcript: [],
@@ -667,10 +670,10 @@ router.post('/book', requireDoctorSession, async (req, res) => {
         createdAt: new Date()
       });
       return res.status(200).json({
-        message: conflict ? 'Appointment request created. Awaiting doctor approval.' : 'Appointment booked successfully',
+        message: 'Consultation opened successfully.',
         appointment,
         session: demoCallSessions[0],
-        isAvailable: !conflict
+        isAvailable: true
       });
     }
 
@@ -682,19 +685,18 @@ router.post('/book', requireDoctorSession, async (req, res) => {
       doctorName: doctor?.fullName || doctorName || 'Doctor',
       scheduledDate,
       scheduledTime,
-      status: 'Pending',
-      roomUrl: ''
+      status: 'Approved',
+      roomUrl: makeJitsiRoom(),
+      callStarted: true
     });
 
     await appointment.save();
-
-    const conflict = await getAppointmentConflict(doctorId, scheduledDate, scheduledTime, appointment._id);
 
     const session = new CallSession({
       patientId,
       patientName,
       doctorName: doctor?.fullName || doctorName || 'Doctor',
-      roomUrl: appointment.roomUrl || makeJitsiRoom(),
+      roomUrl: appointment.roomUrl,
       scheduledDate,
       scheduledTime,
       transcript: [],
@@ -705,10 +707,10 @@ router.post('/book', requireDoctorSession, async (req, res) => {
     await session.save();
 
     return res.status(200).json({
-      message: conflict ? 'Appointment request created. Awaiting doctor approval.' : 'Appointment booked successfully',
+      message: 'Consultation opened successfully.',
       appointment,
       session,
-      isAvailable: !conflict
+      isAvailable: true
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -26,7 +26,6 @@ export default function TherabotDoctorDashboard() {
   const [patientSessions, setPatientSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
   const [transcriptText, setTranscriptText] = useState('');
-  const [newConsultation, setNewConsultation] = useState({ date: '', time: '' });
   const [search, setSearch] = useState('');
   const selectedPatientIdRef = useRef(null);
   const doctorName = localStorage.getItem('doctorName') || 'Dr. Suhana Aigal';
@@ -159,8 +158,7 @@ export default function TherabotDoctorDashboard() {
     event.preventDefault();
     if (!selectedPatient) return;
     try {
-      await api.post('/api/appointment/book', { patientId: selectedPatient._id, patientName: selectedPatient.fullName, doctorName, scheduledDate: newConsultation.date, scheduledTime: newConsultation.time });
-      setNewConsultation({ date: '', time: '' });
+      await api.post('/api/appointment/book', { patientId: selectedPatient._id, patientName: selectedPatient.fullName, doctorName });
       await refreshAll();
       await inspectPatient(selectedPatient._id);
     } catch (error) { window.alert(error?.response?.data?.error || 'Unable to schedule consultation.'); }
@@ -197,7 +195,7 @@ export default function TherabotDoctorDashboard() {
     }[activeSection] || ['Care overview', ''];
 
   const content = activeSection === 'patient-report' && selectedPatient
-    ? <PatientRecord {...{ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, newConsultation, setNewConsultation, scheduleConsultation, downloadPatientReport, goBack: () => { setSelectedPatient(null); setActiveSection('patients'); } }} />
+    ? <PatientRecord {...{ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, scheduleConsultation, downloadPatientReport, goBack: () => { setSelectedPatient(null); setActiveSection('patients'); } }} />
     : activeSection === 'patients' ? <PatientDirectory patients={visiblePatients} search={search} setSearch={setSearch} inspectPatient={inspectPatient} deletePatient={deletePatient} />
       : activeSection === 'appointments' ? <AppointmentView patients={patients} requests={requests} appointments={appointments} approve={approveAppointment} decline={declineAppointment} doctorId={localStorage.getItem('doctorAuthId') || localStorage.getItem('doctorId')} doctorName={doctorName} onBooked={refreshAll} />
         : activeSection === 'alerts' ? <AlertView notifications={notifications} reviewNotification={reviewNotification} />
@@ -261,7 +259,7 @@ function PatientDirectory({ patients, search, setSearch, inspectPatient, deleteP
 
 function AppointmentView({ patients, requests, appointments, approve, decline, doctorId, doctorName, onBooked }) {
   const [bookingOpen, setBookingOpen] = useState(false);
-  const [booking, setBooking] = useState({ patientId: '', scheduledDate: '', scheduledTime: '' });
+  const [booking, setBooking] = useState({ patientId: '' });
   const [bookingError, setBookingError] = useState('');
   const [bookingLoading, setBookingLoading] = useState(false);
   const pending = requests.filter(item => item.status === 'Pending');
@@ -280,11 +278,9 @@ function AppointmentView({ patients, requests, appointments, approve, decline, d
         patientId: patient._id,
         patientName: patient.fullName,
         doctorId,
-        doctorName,
-        scheduledDate: booking.scheduledDate,
-        scheduledTime: booking.scheduledTime
+        doctorName
       });
-      setBooking({ patientId: '', scheduledDate: '', scheduledTime: '' });
+      setBooking({ patientId: '' });
       setBookingOpen(false);
       await onBooked();
     } catch (error) {
@@ -298,11 +294,9 @@ function AppointmentView({ patients, requests, appointments, approve, decline, d
     <section className="panel panel-pad">
       <div className="panel-head"><div><h2 className="panel-title">Appointments</h2><p className="panel-caption">Book a visit for a patient or respond to incoming appointment requests.</p></div><button className="action-button" type="button" onClick={() => { setBookingOpen(value => !value); setBookingError(''); }}>{bookingOpen ? 'Cancel booking' : 'Book appointment +'}</button></div>
       {bookingOpen && <form className="doctor-booking-form" onSubmit={submitBooking}>
-        <div className="panel-head"><div><h3 className="panel-title">New appointment</h3><p className="panel-caption">Choose a patient and a time for the consultation.</p></div></div>
+        <div className="panel-head"><div><h3 className="panel-title">New consultation</h3><p className="panel-caption">Choose a patient to open an immediate consultation room.</p></div></div>
         <div className="form-grid">
           <div className="form-field full"><label htmlFor="doctor-book-patient">Patient</label><select id="doctor-book-patient" value={booking.patientId} onChange={event => setBooking(current => ({ ...current, patientId: event.target.value }))} required><option value="">Select a patient</option>{patients.map(patient => <option key={patient._id} value={patient._id}>{patient.fullName}{patient.email ? ` · ${patient.email}` : ''}</option>)}</select></div>
-          <div className="form-field"><label htmlFor="doctor-book-date">Date</label><input id="doctor-book-date" type="date" min={new Date().toISOString().slice(0, 10)} value={booking.scheduledDate} onChange={event => setBooking(current => ({ ...current, scheduledDate: event.target.value }))} required /></div>
-          <div className="form-field"><label htmlFor="doctor-book-time">Time</label><input id="doctor-book-time" type="time" value={booking.scheduledTime} onChange={event => setBooking(current => ({ ...current, scheduledTime: event.target.value }))} required /></div>
         </div>
         {bookingError && <div className="auth-error" role="alert">{bookingError}</div>}
         <div className="form-actions"><button className="action-button" type="submit" disabled={bookingLoading}>{bookingLoading ? 'Booking…' : 'Confirm appointment'}</button></div>
@@ -354,7 +348,7 @@ function followUpStatus(checkIns, appointments) {
   return { checkInOverdue, missedAppointments };
 }
 
-function PatientRecord({ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, newConsultation, setNewConsultation, scheduleConsultation, downloadPatientReport, goBack }) {
+function PatientRecord({ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, scheduleConsultation, downloadPatientReport, goBack }) {
   const [recoveryCode, setRecoveryCode] = useState('');
   const [recoveryCodeExpiry, setRecoveryCodeExpiry] = useState('');
   const [recoveryCodeError, setRecoveryCodeError] = useState('');
@@ -386,7 +380,7 @@ function PatientRecord({ selectedPatient, patientHistory, patientAppointments, p
     {patientReport?.notes && <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Clinical snapshot</h3><p className="panel-caption">Summary from recorded check-ins.</p></div></div><p className="snapshot-text">{patientReport.notes}</p></section>}
     <div className="report-columns"><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Daily check-ins</h3><p className="panel-caption">Newest reflections and wellbeing signals.</p></div></div>{patientHistory.length ? <div className="data-list">{patientHistory.map(item => <article className="history-item" key={item._id || item.date}><div className="history-date">{new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}<span className={`risk-badge ${riskClass(item.calculatedBand)}`}>{item.calculatedBand}</span></div><div className="history-metrics">Mood <strong>{item.moodScore}/10</strong><span>·</span> Anxiety <strong>{item.anxietyLevel}/10</strong><span>·</span> Sleep <strong>{item.sleepHours}h</strong></div>{item.journalText && <p className="history-journal">{item.journalText}</p>}</article>)}</div> : <div className="empty-state">No check-ins recorded.</div>}</section>
       <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Consultations & reports</h3><p className="panel-caption">Transcripts and clinician-review drafts.</p></div><span className="count-badge">{patientSessions.filter(session => session.clinicalNote?.text).length} reports</span></div>{patientSessions.length ? <div className="data-list">{patientSessions.map(session => <article className="session-item" key={session._id}><div className="panel-head"><div><strong>{session.scheduledDate} · {session.scheduledTime}</strong><small className="session-state">{session.transcript?.length ? 'Conversation captured' : 'No transcript'} · {session.clinicalNote?.text ? 'Report ready' : 'No report yet'}</small></div><button className="quiet-button" type="button" onClick={() => { setSelectedSession(session); setTranscriptText((session.transcript || []).map(item => `${item.author}: ${item.message}`).join('\n')); }}>{selectedSession?._id === session._id ? 'Selected' : 'Review'}</button></div><p className="session-summary">{session.summary || 'Summary appears after a conversation is captured.'}</p>{session.clinicalNote?.text && <details><summary className="details-trigger">View clinical report</summary><div className="report-note">{session.clinicalNote.text}</div><small className="review-note">Draft for clinician review before use.</small></details>}{session.transcript?.length > 0 && <details className="transcript-details"><summary className="details-trigger muted">View transcript ({session.transcript.length} segment{session.transcript.length === 1 ? '' : 's'})</summary><div className="transcript-list">{session.transcript.map((entry, index) => <p key={`${session._id}-${index}`}><strong>{entry.author}:</strong> {entry.message}</p>)}</div></details>}</article>)}</div> : <div className="empty-state">No consultation history recorded.</div>}</section></div>
-    {selectedSession && <div className="report-columns"><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Review or draft a note</h3><p className="panel-caption">Edit transcript text before saving and generating a draft.</p></div></div><form onSubmit={saveTranscript}><div className="form-field"><label htmlFor="transcript">Call transcript</label><textarea id="transcript" rows="8" value={transcriptText} onChange={event => setTranscriptText(event.target.value)} placeholder={'Patient: I have been feeling stressed lately.\nDoctor: When did you first notice it?'} /></div><div className="form-actions"><button className="action-button" type="submit">Save transcript & draft report →</button></div></form></section><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Schedule consultation</h3><p className="panel-caption">Create a new appointment for {selectedPatient.fullName}.</p></div></div><form onSubmit={scheduleConsultation}><div className="form-grid"><div className="form-field"><label htmlFor="visit-date">Date</label><input id="visit-date" type="date" value={newConsultation.date} onChange={event => setNewConsultation({ ...newConsultation, date: event.target.value })} required /></div><div className="form-field"><label htmlFor="visit-time">Time</label><input id="visit-time" type="time" value={newConsultation.time} onChange={event => setNewConsultation({ ...newConsultation, time: event.target.value })} required /></div></div><div className="form-actions"><button className="action-button" type="submit">Schedule visit →</button></div></form></section></div>}
+    {selectedSession && <div className="report-columns"><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Review or draft a note</h3><p className="panel-caption">Edit transcript text before saving and generating a draft.</p></div></div><form onSubmit={saveTranscript}><div className="form-field"><label htmlFor="transcript">Call transcript</label><textarea id="transcript" rows="8" value={transcriptText} onChange={event => setTranscriptText(event.target.value)} placeholder={'Patient: I have been feeling stressed lately.\nDoctor: When did you first notice it?'} /></div><div className="form-actions"><button className="action-button" type="submit">Save transcript & draft report →</button></div></form></section><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Open consultation</h3><p className="panel-caption">Create an immediate consultation room for {selectedPatient.fullName}.</p></div></div><form onSubmit={scheduleConsultation}><div className="form-actions"><button className="action-button" type="submit">Open consultation →</button></div></form></section></div>}
     {(patientAppointments.length > 0 || patientNotifications.length > 0) && <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Appointments & alerts</h3><p className="panel-caption">Recent scheduling activity for this patient.</p></div></div><div className="report-columns"><div className="data-list">{patientAppointments.map(item => <div className="data-row" key={item._id}><div className="data-main"><strong>{item.scheduledDate} · {item.scheduledTime}</strong><small>{item.status} · {item.urgency || 'Routine'}</small></div></div>)}</div><div className="alert-list">{patientNotifications.map(item => <div className={`alert-row ${item.severity === 'critical' ? 'critical' : ''}`} key={item._id}><strong>{item.severity || 'Update'}</strong><p>{item.message}</p></div>)}</div></div></section>}
   </div>;
 }
