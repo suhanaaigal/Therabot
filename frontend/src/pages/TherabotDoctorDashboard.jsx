@@ -24,6 +24,8 @@ export default function TherabotDoctorDashboard() {
   const [patientNotifications, setPatientNotifications] = useState([]);
   const [patientReport, setPatientReport] = useState(null);
   const [patientSessions, setPatientSessions] = useState([]);
+  const [doctorNotes, setDoctorNotes] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
   const [selectedSession, setSelectedSession] = useState(null);
   const [transcriptText, setTranscriptText] = useState('');
   const [search, setSearch] = useState('');
@@ -101,6 +103,7 @@ export default function TherabotDoctorDashboard() {
       setPatientNotifications(data.notifications || []);
       setPatientReport(data.report || null);
       setPatientSessions(data.callSessions || []);
+      setDoctorNotes(data.patient?.doctorNotes || '');
       setSelectedSession((data.callSessions || [])[0] || null);
       setTranscriptText('');
       setActiveSection('patient-report');
@@ -154,6 +157,21 @@ export default function TherabotDoctorDashboard() {
     } catch (error) { window.alert(error?.response?.data?.error || 'Could not save the transcript or draft a report.'); }
   }
 
+  async function saveDoctorNotes(event) {
+    event.preventDefault();
+    if (!selectedPatient || notesSaving) return;
+    setNotesSaving(true);
+    try {
+      const response = await api.patch(`/api/doctor/patient/${encodeURIComponent(selectedPatient._id)}/notes`, { notes: doctorNotes });
+      setDoctorNotes(response.data.notes || '');
+      setSelectedPatient(previous => previous ? { ...previous, doctorNotes: response.data.notes || '' } : previous);
+    } catch (error) {
+      window.alert(error?.response?.data?.error || 'Could not save the patient note.');
+    } finally {
+      setNotesSaving(false);
+    }
+  }
+
   async function scheduleConsultation(event) {
     event.preventDefault();
     if (!selectedPatient) return;
@@ -173,6 +191,7 @@ export default function TherabotDoctorDashboard() {
       `Risk band: ${selectedPatient.currentRiskBand || 'Green'}`,
       '', 'DAILY CHECK-INS',
       ...patientHistory.map(item => `${new Date(item.date).toLocaleDateString()} | Sleep ${item.sleepHours}h | Mood ${item.moodScore}/10 | Anxiety ${item.anxietyLevel}/10 | ${item.journalText || 'No journal note'}`),
+      '', 'DOCTOR NOTES', doctorNotes || 'No doctor notes recorded.',
       '', 'CONSULTATIONS',
       ...patientSessions.map(session => `${session.scheduledDate} ${session.scheduledTime}\n${session.clinicalNote?.text || session.summary || 'No report yet.'}`),
       '', `Generated ${new Date().toLocaleString()}`
@@ -384,7 +403,7 @@ function PatientRecord({ selectedPatient, patientHistory, patientAppointments, p
     {patientReport?.notes && <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Clinical snapshot</h3><p className="panel-caption">Summary from recorded check-ins.</p></div></div><p className="snapshot-text">{patientReport.notes}</p></section>}
     <div className="report-columns"><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Daily check-ins</h3><p className="panel-caption">Newest reflections and wellbeing signals.</p></div></div>{patientHistory.length ? <div className="data-list">{patientHistory.map(item => <article className="history-item" key={item._id || item.date}><div className="history-date">{new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}<span className={`risk-badge ${riskClass(item.calculatedBand)}`}>{item.calculatedBand}</span></div><div className="history-metrics">Mood <strong>{item.moodScore}/10</strong><span>·</span> Anxiety <strong>{item.anxietyLevel}/10</strong><span>·</span> Sleep <strong>{item.sleepHours}h</strong></div>{item.journalText && <p className="history-journal">{item.journalText}</p>}</article>)}</div> : <div className="empty-state">No check-ins recorded.</div>}</section>
       <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Consultations & reports</h3><p className="panel-caption">Transcripts and clinician-review drafts.</p></div><span className="count-badge">{patientSessions.filter(session => session.clinicalNote?.text).length} reports</span></div>{patientSessions.length ? <div className="data-list">{patientSessions.map(session => <article className="session-item" key={session._id}><div className="panel-head"><div><strong>{session.scheduledDate} · {session.scheduledTime}</strong><small className="session-state">{session.transcript?.length ? 'Conversation captured' : 'No transcript'} · {session.clinicalNote?.text ? 'Report ready' : 'No report yet'}</small></div><button className="quiet-button" type="button" onClick={() => { setSelectedSession(session); setTranscriptText((session.transcript || []).map(item => `${item.author}: ${item.message}`).join('\n')); }}>{selectedSession?._id === session._id ? 'Selected' : 'Review'}</button></div><p className="session-summary">{session.summary || 'Summary appears after a conversation is captured.'}</p>{session.clinicalNote?.text && <details><summary className="details-trigger">View clinical report</summary><div className="report-note">{session.clinicalNote.text}</div><small className="review-note">Draft for clinician review before use.</small></details>}{session.transcript?.length > 0 && <details className="transcript-details"><summary className="details-trigger muted">View transcript ({session.transcript.length} segment{session.transcript.length === 1 ? '' : 's'})</summary><div className="transcript-list">{session.transcript.map((entry, index) => <p key={`${session._id}-${index}`}><strong>{entry.author}:</strong> {entry.message}</p>)}</div></details>}</article>)}</div> : <div className="empty-state">No consultation history recorded.</div>}</section></div>
-    {selectedSession && <div className="report-columns report-editor"><section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Review or draft a note</h3><p className="panel-caption">Edit transcript text before saving and generating a draft.</p></div></div><form onSubmit={saveTranscript}><div className="form-field"><label htmlFor="transcript">Call transcript</label><textarea id="transcript" rows="8" value={transcriptText} onChange={event => setTranscriptText(event.target.value)} placeholder={'Patient: I have been feeling stressed lately.\nDoctor: When did you first notice it?'} /></div><div className="form-actions"><button className="action-button" type="submit">Save transcript & draft report →</button></div></form></section></div>}
+    <section className="panel panel-pad doctor-notes-panel"><div className="panel-head"><div><h3 className="panel-title">Patient notes</h3><p className="panel-caption">Write private notes about this patient. Notes are saved to the patient record.</p></div><span className="notes-label">Private clinician notes</span></div><form onSubmit={saveDoctorNotes}><textarea className="doctor-notes-input" aria-label="Patient notes" value={doctorNotes} onChange={event => setDoctorNotes(event.target.value)} placeholder="Write observations, follow-up reminders, or care notes here..." /><div className="form-actions"><button className="action-button" type="submit" disabled={notesSaving}>{notesSaving ? 'Saving…' : 'Save notes'}</button></div></form></section>
     {(patientAppointments.length > 0 || patientNotifications.length > 0) && <section className="panel panel-pad"><div className="panel-head"><div><h3 className="panel-title">Appointments & alerts</h3><p className="panel-caption">Recent scheduling activity for this patient.</p></div></div><div className="report-columns"><div className="data-list">{patientAppointments.map(item => <div className="data-row" key={item._id}><div className="data-main"><strong>{item.scheduledDate} · {item.scheduledTime}</strong><small>{item.status} · {item.urgency || 'Routine'}</small></div></div>)}</div><div className="alert-list">{patientNotifications.map(item => <div className={`alert-row ${item.severity === 'critical' ? 'critical' : ''}`} key={item._id}><strong>{item.severity || 'Update'}</strong><p>{item.message}</p></div>)}</div></div></section>}
   </div>;
 }

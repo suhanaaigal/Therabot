@@ -184,6 +184,29 @@ router.post('/patient/:id/password-reset', requireDoctorSession, async (req, res
   }
 });
 
+router.patch('/patient/:id/notes', requireDoctorSession, async (req, res) => {
+  const patientId = String(req.params.id);
+  const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+
+  try {
+    if (isDemoMode()) {
+      const patient = findDemoPatient(patientId, req.doctorId);
+      if (!patient) return res.status(404).json({ error: 'Patient not found in your care team.' });
+      patient.doctorNotes = notes;
+      return res.status(200).json({ notes: patient.doctorNotes });
+    }
+
+    const patient = await Patient.findOne({ _id: patientId, assignedDoctorId: String(req.doctorId) });
+    if (!patient) return res.status(404).json({ error: 'Patient not found in your care team.' });
+    patient.doctorNotes = notes;
+    await patient.save();
+    return res.status(200).json({ notes: patient.doctorNotes });
+  } catch (error) {
+    console.error('Patient notes update failed:', error.message);
+    return res.status(500).json({ error: 'Could not save the patient note.' });
+  }
+});
+
 router.delete('/patient/:id', requireDoctorSession, async (req, res) => {
   const patientId = String(req.params.id);
   try {

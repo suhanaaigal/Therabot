@@ -9,6 +9,7 @@ const patientSchema = new mongoose.Schema({
   gender: { type: String, required: true },
   phoneNumber: { type: String, default: '' },
   emergencyContact: { type: String, default: '' },
+  doctorNotes: { type: String, default: '' },
   password: { type: String, default: '', select: false },
   passwordResetCodeHash: { type: String, default: '', select: false },
   passwordResetExpiresAt: { type: Date, default: null, select: false },
