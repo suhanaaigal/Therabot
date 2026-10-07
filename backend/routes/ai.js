@@ -10,9 +10,15 @@ const { requireDoctorSession } = require('../doctorSession');
 const crisisMessage = `I want to take this seriously. If you feel like you might hurt yourself or you are in immediate danger, please contact emergency services or a local crisis line right now. In the US and Canada, call or text 988. If you are elsewhere, use your local emergency or crisis support number. I can also stay with you and help you take the next safe step.`;
 
 const detectCrisis = (text = '') => /\b(kill myself|end my life|suicid(?:e|al)|hurt myself|self[- ]harm|don't want to live|do not want to live|wish i were dead|no reason to live|i may hurt myself|i am in immediate danger|i am unsafe)\b/i.test(text);
-const getConfiguredModel = useOllama => useOllama
-  ? process.env.OLLAMA_MODEL || 'llama3.2'
-  : process.env.OPENAI_MODEL || 'openai/gpt-oss-20b';
+const getConfiguredModel = (useOllama, baseUrl = '') => {
+  if (useOllama) return process.env.OLLAMA_MODEL || 'llama3.2';
+
+  const configuredModel = process.env.OPENAI_MODEL || 'openai/gpt-oss-20b';
+  const isGroq = /api\.groq\.com/i.test(baseUrl);
+  const retiredGroqModel = /^(llama-3\.1-8b-instant|llama-3\.3-70b-versatile)$/i.test(configuredModel);
+
+  return isGroq && retiredGroqModel ? 'openai/gpt-oss-20b' : configuredModel;
+};
 
 const generateAiReply = async (userMessage = '', conversation = []) => {
   const message = String(userMessage || '').trim();
@@ -27,8 +33,11 @@ const generateAiReply = async (userMessage = '', conversation = []) => {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!useOllama && !apiKey) throw new Error('The AI provider is not configured. Set OPENAI_API_KEY on the backend.');
 
-  const baseUrl = (process.env.OPENAI_BASE_URL || (useOllama ? 'http://127.0.0.1:11434/v1' : 'https://api.openai.com/v1')).replace(/\/$/, '');
-  const model = getConfiguredModel(useOllama);
+  const defaultBaseUrl = useOllama
+    ? 'http://127.0.0.1:11434/v1'
+    : 'https://api.openai.com/v1';
+  const baseUrl = (process.env.OPENAI_BASE_URL || defaultBaseUrl).replace(/\/$/, '');
+  const model = getConfiguredModel(useOllama, baseUrl);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
   let response;
@@ -61,7 +70,10 @@ const generateAiReply = async (userMessage = '', conversation = []) => {
     clearTimeout(timeout);
   }
 
-  if (!response.ok) throw new Error(`AI provider returned ${response.status}`);
+  if (!response.ok) {
+    const providerError = await response.text();
+    throw new Error(`AI provider returned ${response.status} for model ${model}: ${providerError.slice(0, 300)}`);
+  }
   const data = await response.json();
   const reply = data.choices?.[0]?.message?.content?.trim();
   if (!reply) throw new Error('AI provider returned an empty response.');
@@ -145,7 +157,7 @@ const generateClinicalNote = async (transcript = [], patientName = 'the patient'
       ...(useOllama ? {} : { Authorization: `Bearer ${apiKey}` })
     },
     body: JSON.stringify({
-      model: getConfiguredModel(useOllama),
+      model: getConfiguredModel(useOllama, baseUrl),
       temperature: 0.2,
       max_tokens: 900,
       messages: [
@@ -165,7 +177,7 @@ const generateClinicalNote = async (transcript = [], patientName = 'the patient'
   const data = await response.json();
   const note = data.choices?.[0]?.message?.content?.trim();
   if (!note) throw new Error('The AI provider returned an empty clinical note.');
-  return { note, model: getConfiguredModel(useOllama) };
+  return { note, model: getConfiguredModel(useOllama, baseUrl) };
 };
 
 router.post('/chat', async (req, res) => {
