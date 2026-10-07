@@ -9,6 +9,12 @@ services:
         value: production
       - key: MONGO_URI
         sync: false
+      - key: AI_PROVIDER
+        value: openai
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_API_KEY
+        sync: false
 
   - type: web
     name: mental-health-frontend

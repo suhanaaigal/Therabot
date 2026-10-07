@@ -14,97 +14,6 @@ const getConfiguredModel = useOllama => useOllama
   ? process.env.OLLAMA_MODEL || 'llama3.2'
   : process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
-const generateContextualFallback = (message, conversation = []) => {
-  const latestUserMessage = String(message || '').replace(/\s+/g, ' ').trim();
-  const lowerMessage = latestUserMessage.toLowerCase();
-  const history = Array.isArray(conversation) ? conversation : [];
-  const previousUserMessage = [...history]
-    .reverse()
-    .find(item => item?.role === 'user' && item?.content)?.content;
-  const previousAssistantMessage = [...history]
-    .reverse()
-    .find(item => item?.role === 'assistant' && item?.content)?.content;
-  const context = previousUserMessage ? String(previousUserMessage).replace(/\s+/g, ' ').trim().slice(0, 120) : '';
-  const previousReply = String(previousAssistantMessage || '').trim();
-  const choose = replies => replies.find(reply => reply !== previousReply) || replies[0];
-
-  if (/^(hi|hello|hey)\b/i.test(lowerMessage)) {
-    return choose([
-      'Hi, I am here with you. How are you feeling as we start talking?',
-      'Hi. I am glad you reached out. What is on your mind right now?'
-    ]);
-  }
-  if (/^(talk to me|can you stay|stay with me|i need someone|i need company)\b/i.test(lowerMessage)) {
-    return choose([
-      'Of course. I am here with you. You do not need to make it sound neat or explain everything at once. What is this moment like for you?',
-      'I am here. We can take this slowly, even if you only want to share a few words. What are you noticing right now?'
-    ]);
-  }
-  if (/no friends|have no friends|feel alone|so alone|lonely|isolated/i.test(lowerMessage)) {
-    return choose([
-      'Feeling alone can be really painful. I can stay with you here. Do you want to talk about something that happened with other people, or how loneliness feels tonight?',
-      'That sounds isolating, and you deserve support. We can talk about the loneliness itself, or about one person or place that has felt a little safer.'
-    ]);
-  }
-  if (/^(i('| a)?m )?(sad|feeling sad|not okay|not ok|upset|down)\b/i.test(lowerMessage) || /\bfeeling sad\b/i.test(lowerMessage)) {
-    return choose([
-      'I am sorry you are feeling sad. You do not have to push it away or explain it all at once. Has something happened today, or has this been building for a while?',
-      'That sounds heavy. I am here to listen without rushing you. Would it help to tell me what brought the sadness up, or what you need in this moment?'
-    ]);
-  }
-  if (/a lot of things|lot of things|so much going on|too much going on|many things|everything is going on/i.test(lowerMessage)) {
-    return choose([
-      'It sounds like several things are piling up at once. We do not have to untangle everything right now. Which part is taking up the most space in your mind?',
-      'That is a lot to carry at the same time. We can slow it down and choose just one thread. What feels most urgent emotionally?'
-    ]);
-  }
-  if (/^(yes|yeah|yep|okay|ok|sure|maybe)\b/i.test(lowerMessage) && context) {
-    return choose([
-      `Okay, we can stay with that. When you think about "${context}", what feels hardest about it right now?`,
-      'Okay. You can take your time. What would feel most supportive from me right now: listening, helping you sort it out, or trying a small calming exercise?'
-    ]);
-  }
-  if (/^(my |the |it is |it’s |because |just )/i.test(lowerMessage) && context) {
-    return choose([
-      `I am following you. It sounds like this connects with what you mentioned about "${context}". What part should we focus on first?`,
-      'That helps me understand a little more. What happened next, or what feeling is strongest underneath it?'
-    ]);
-  }
-  if (/sleep|insomnia|tired|rest/i.test(lowerMessage)) {
-    return choose([
-      'Poor sleep can make everything feel heavier. If you can, try five slow breaths and write down one worry to revisit tomorrow. What has been keeping you awake?',
-      'Sleep trouble is exhausting. Would you like to talk about racing thoughts, your routine, or how you feel during the day after a poor night?'
-    ]);
-  }
-  if (/anxious|anxiety|panic|overwhelmed|stress|stressed/i.test(lowerMessage)) {
-    return choose([
-      'That sounds overwhelming. For this moment, try focusing only on the next small task or taking five slow breaths. What part feels hardest right now?',
-      'Anxiety can make everything feel urgent at once. Let us narrow it down: is the strongest feeling fear, pressure, or uncertainty?'
-    ]);
-  }
-  if (/grounding|calm|relax|breath/i.test(lowerMessage)) {
-    return choose([
-      'Let us try a short grounding exercise: name five things you can see, four things you can feel, and three sounds you can hear. Which step feels easiest to start with?',
-      'Try pressing both feet gently into the floor and naming three things you can see. Then tell me whether your body feels the same, a little calmer, or more tense.'
-    ]);
-  }
-  if (/lonely|alone|exhausted|sad|down/i.test(lowerMessage)) {
-    return choose([
-      'I am sorry you are feeling this way. You do not have to solve everything at once, and I am here to listen. What feels most painful about this moment?',
-      'That sounds difficult to carry. We can stay with one feeling at a time. What do you need most right now: to be heard, to feel calmer, or to think through a next step?'
-    ]);
-  }
-  return context
-    ? choose([
-      `I hear you. This seems connected to what you shared about "${context}". Which part would you like me to understand better?`,
-      'I am listening. You do not have to solve it before talking about it. What feeling is strongest for you right now?'
-    ])
-    : choose([
-      'I am listening. You do not have to handle everything at once. What feels most important to share first?',
-      'Take your time. You can start with what happened, how you feel, or simply what you need from me right now.'
-    ]);
-};
-
 const generateAiReply = async (userMessage = '', conversation = []) => {
   const message = String(userMessage || '').trim();
   if (!message) throw new Error('A message is required.');
@@ -113,12 +22,10 @@ const generateAiReply = async (userMessage = '', conversation = []) => {
     return { reply: `${crisisMessage} Are you in immediate danger right now?`, provider: 'safety-response' };
   }
 
-  const provider = (process.env.AI_PROVIDER || 'fallback').toLowerCase();
+  const provider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
   const useOllama = provider === 'ollama';
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!useOllama && !apiKey) {
-    return { reply: generateContextualFallback(message, conversation), provider: 'basic-fallback' };
-  }
+  if (!useOllama && !apiKey) throw new Error('The AI provider is not configured. Set OPENAI_API_KEY on the backend.');
 
   const baseUrl = (process.env.OPENAI_BASE_URL || (useOllama ? 'http://127.0.0.1:11434/v1' : 'https://api.openai.com/v1')).replace(/\/$/, '');
   const model = getConfiguredModel(useOllama);
@@ -280,10 +187,10 @@ router.post('/chat', async (req, res) => {
     generated = await generateAiReply(trimmedMessage, history);
   } catch (error) {
     console.error('AI provider request failed:', error.message);
-    generated = {
-      reply: generateContextualFallback(trimmedMessage, history),
-      provider: 'basic-fallback'
-    };
+    console.error('AI chat unavailable:', error.message);
+    return res.status(503).json({
+      error: 'The AI companion is temporarily unavailable. Please configure or reconnect the hosted AI provider, then try again.'
+    });
   }
 
   const aiMessage = {
