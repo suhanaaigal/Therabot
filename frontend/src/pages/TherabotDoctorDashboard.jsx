@@ -214,7 +214,7 @@ export default function TherabotDoctorDashboard() {
     }[activeSection] || ['Care overview', ''];
 
   const content = activeSection === 'patient-report' && selectedPatient
-    ? <PatientRecord {...{ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, scheduleConsultation, downloadPatientReport, goBack: () => { setSelectedPatient(null); setActiveSection('patients'); } }} />
+    ? <PatientRecord {...{ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, scheduleConsultation, doctorNotes, setDoctorNotes, notesSaving, saveDoctorNotes, downloadPatientReport, goBack: () => { setSelectedPatient(null); setActiveSection('patients'); } }} />
     : activeSection === 'patients' ? <PatientDirectory patients={visiblePatients} search={search} setSearch={setSearch} inspectPatient={inspectPatient} deletePatient={deletePatient} />
       : activeSection === 'appointments' ? <AppointmentView patients={patients} requests={requests} appointments={appointments} approve={approveAppointment} decline={declineAppointment} doctorId={localStorage.getItem('doctorAuthId') || localStorage.getItem('doctorId')} doctorName={doctorName} onBooked={refreshAll} />
         : activeSection === 'alerts' ? <AlertView notifications={notifications} reviewNotification={reviewNotification} />
@@ -371,7 +371,7 @@ function followUpStatus(checkIns, appointments) {
   return { checkInOverdue, missedAppointments };
 }
 
-function PatientRecord({ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, scheduleConsultation, downloadPatientReport, goBack }) {
+function PatientRecord({ selectedPatient, patientHistory, patientAppointments, patientNotifications, patientReport, patientSessions, selectedSession, setSelectedSession, transcriptText, setTranscriptText, saveTranscript, scheduleConsultation, doctorNotes, setDoctorNotes, notesSaving, saveDoctorNotes, downloadPatientReport, goBack }) {
   const [recoveryCode, setRecoveryCode] = useState('');
   const [recoveryCodeExpiry, setRecoveryCodeExpiry] = useState('');
   const [recoveryCodeError, setRecoveryCodeError] = useState('');
