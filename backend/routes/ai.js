@@ -20,10 +20,22 @@ const generateContextualFallback = (message, conversation = []) => {
   const previousUserMessage = [...(Array.isArray(conversation) ? conversation : [])]
     .reverse()
     .find(item => item?.role === 'user' && item?.content)?.content;
-  const context = previousUserMessage ? ` You previously mentioned "${String(previousUserMessage).trim().slice(0, 120)}".` : '';
+  const context = previousUserMessage ? String(previousUserMessage).trim().slice(0, 120) : '';
 
   if (/^(hi|hello|hey)\b/i.test(lowerMessage)) {
     return 'Hi, I am here with you. What has been feeling most difficult today?';
+  }
+  if (/^(talk to me|can you stay|stay with me|i need someone|i need company)\b/i.test(lowerMessage)) {
+    return 'Of course. I am here with you, and you do not need to explain everything perfectly. You can start with the one thing that feels heaviest right now, or just tell me what this moment feels like.';
+  }
+  if (/no friends|have no friends|feel alone|so alone|lonely|isolated/i.test(lowerMessage)) {
+    return 'Feeling alone can hurt deeply, especially when you already have a lot on your mind. I can stay with you here. Would you rather talk about what has been making you feel alone, or about what happened today?';
+  }
+  if (/^(i('| a)?m )?(sad|feeling sad|not okay|not ok|upset|down)\b/i.test(lowerMessage) || /\bfeeling sad\b/i.test(lowerMessage)) {
+    return 'I am sorry you are feeling sad, Sonali. You do not have to push it away or explain it all at once. I am here to listen—did something happen today, or has the sadness been building for a while?';
+  }
+  if (/a lot of things|lot of things|so much going on|too much going on|many things|everything is going on/i.test(lowerMessage)) {
+    return 'It sounds like several things are piling up at once. We do not have to untangle everything right now. Tell me about one thing that is taking up the most space in your mind, and we can take it slowly.';
   }
   if (/sleep|insomnia|tired|rest/i.test(lowerMessage)) {
     return 'Poor sleep can make stress feel heavier. If you can, try putting your phone aside for a few minutes, take five slow breaths, and write down one concern to revisit tomorrow. How many hours have you been sleeping lately?';
@@ -35,9 +47,11 @@ const generateContextualFallback = (message, conversation = []) => {
     return 'Let us try a short grounding exercise: name five things you can see, four things you can feel, and three sounds you can hear. Which step feels easiest to start with?';
   }
   if (/lonely|alone|exhausted|sad|down/i.test(lowerMessage)) {
-    return 'I am sorry this feels lonely and exhausting. You do not have to solve everything at once; consider sending a simple message to someone you trust and taking one gentle step for yourself. Is there someone you feel safe contacting?';
+    return 'I am sorry you are feeling this way. You do not have to solve everything at once, and I am here to listen. What feels most painful about this moment?';
   }
-  return `Thank you for sharing that.${context} I am listening. What would feel like the most helpful next step right now?`;
+  return context
+    ? `I hear you. This sounds connected to what you shared about "${context}". You do not have to handle it all at once. What part feels heaviest right now?`
+    : 'I hear you. You do not have to handle everything at once. Tell me a little more about what is weighing on you, and I will stay with you through it.';
 };
 
 const generateAiReply = async (userMessage = '', conversation = []) => {
