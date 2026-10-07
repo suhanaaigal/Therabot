@@ -17,41 +17,92 @@ const getConfiguredModel = useOllama => useOllama
 const generateContextualFallback = (message, conversation = []) => {
   const latestUserMessage = String(message || '').replace(/\s+/g, ' ').trim();
   const lowerMessage = latestUserMessage.toLowerCase();
-  const previousUserMessage = [...(Array.isArray(conversation) ? conversation : [])]
+  const history = Array.isArray(conversation) ? conversation : [];
+  const previousUserMessage = [...history]
     .reverse()
     .find(item => item?.role === 'user' && item?.content)?.content;
-  const context = previousUserMessage ? String(previousUserMessage).trim().slice(0, 120) : '';
+  const previousAssistantMessage = [...history]
+    .reverse()
+    .find(item => item?.role === 'assistant' && item?.content)?.content;
+  const context = previousUserMessage ? String(previousUserMessage).replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+  const previousReply = String(previousAssistantMessage || '').trim();
+  const choose = replies => replies.find(reply => reply !== previousReply) || replies[0];
 
   if (/^(hi|hello|hey)\b/i.test(lowerMessage)) {
-    return 'Hi, I am here with you. What has been feeling most difficult today?';
+    return choose([
+      'Hi, I am here with you. How are you feeling as we start talking?',
+      'Hi. I am glad you reached out. What is on your mind right now?'
+    ]);
   }
   if (/^(talk to me|can you stay|stay with me|i need someone|i need company)\b/i.test(lowerMessage)) {
-    return 'Of course. I am here with you, and you do not need to explain everything perfectly. You can start with the one thing that feels heaviest right now, or just tell me what this moment feels like.';
+    return choose([
+      'Of course. I am here with you. You do not need to make it sound neat or explain everything at once. What is this moment like for you?',
+      'I am here. We can take this slowly, even if you only want to share a few words. What are you noticing right now?'
+    ]);
   }
   if (/no friends|have no friends|feel alone|so alone|lonely|isolated/i.test(lowerMessage)) {
-    return 'Feeling alone can hurt deeply, especially when you already have a lot on your mind. I can stay with you here. Would you rather talk about what has been making you feel alone, or about what happened today?';
+    return choose([
+      'Feeling alone can be really painful. I can stay with you here. Do you want to talk about something that happened with other people, or how loneliness feels tonight?',
+      'That sounds isolating, and you deserve support. We can talk about the loneliness itself, or about one person or place that has felt a little safer.'
+    ]);
   }
   if (/^(i('| a)?m )?(sad|feeling sad|not okay|not ok|upset|down)\b/i.test(lowerMessage) || /\bfeeling sad\b/i.test(lowerMessage)) {
-    return 'I am sorry you are feeling sad, Sonali. You do not have to push it away or explain it all at once. I am here to listen—did something happen today, or has the sadness been building for a while?';
+    return choose([
+      'I am sorry you are feeling sad. You do not have to push it away or explain it all at once. Has something happened today, or has this been building for a while?',
+      'That sounds heavy. I am here to listen without rushing you. Would it help to tell me what brought the sadness up, or what you need in this moment?'
+    ]);
   }
   if (/a lot of things|lot of things|so much going on|too much going on|many things|everything is going on/i.test(lowerMessage)) {
-    return 'It sounds like several things are piling up at once. We do not have to untangle everything right now. Tell me about one thing that is taking up the most space in your mind, and we can take it slowly.';
+    return choose([
+      'It sounds like several things are piling up at once. We do not have to untangle everything right now. Which part is taking up the most space in your mind?',
+      'That is a lot to carry at the same time. We can slow it down and choose just one thread. What feels most urgent emotionally?'
+    ]);
+  }
+  if (/^(yes|yeah|yep|okay|ok|sure|maybe)\b/i.test(lowerMessage) && context) {
+    return choose([
+      `Okay, we can stay with that. When you think about "${context}", what feels hardest about it right now?`,
+      'Okay. You can take your time. What would feel most supportive from me right now: listening, helping you sort it out, or trying a small calming exercise?'
+    ]);
+  }
+  if (/^(my |the |it is |it’s |because |just )/i.test(lowerMessage) && context) {
+    return choose([
+      `I am following you. It sounds like this connects with what you mentioned about "${context}". What part should we focus on first?`,
+      'That helps me understand a little more. What happened next, or what feeling is strongest underneath it?'
+    ]);
   }
   if (/sleep|insomnia|tired|rest/i.test(lowerMessage)) {
-    return 'Poor sleep can make stress feel heavier. If you can, try putting your phone aside for a few minutes, take five slow breaths, and write down one concern to revisit tomorrow. How many hours have you been sleeping lately?';
+    return choose([
+      'Poor sleep can make everything feel heavier. If you can, try five slow breaths and write down one worry to revisit tomorrow. What has been keeping you awake?',
+      'Sleep trouble is exhausting. Would you like to talk about racing thoughts, your routine, or how you feel during the day after a poor night?'
+    ]);
   }
   if (/anxious|anxiety|panic|overwhelmed|stress|stressed/i.test(lowerMessage)) {
-    return `That sounds overwhelming, and it makes sense that it is affecting you.${context} Try focusing only on the next small task or taking five slow breaths. What part feels hardest right now?`;
+    return choose([
+      'That sounds overwhelming. For this moment, try focusing only on the next small task or taking five slow breaths. What part feels hardest right now?',
+      'Anxiety can make everything feel urgent at once. Let us narrow it down: is the strongest feeling fear, pressure, or uncertainty?'
+    ]);
   }
   if (/grounding|calm|relax|breath/i.test(lowerMessage)) {
-    return 'Let us try a short grounding exercise: name five things you can see, four things you can feel, and three sounds you can hear. Which step feels easiest to start with?';
+    return choose([
+      'Let us try a short grounding exercise: name five things you can see, four things you can feel, and three sounds you can hear. Which step feels easiest to start with?',
+      'Try pressing both feet gently into the floor and naming three things you can see. Then tell me whether your body feels the same, a little calmer, or more tense.'
+    ]);
   }
   if (/lonely|alone|exhausted|sad|down/i.test(lowerMessage)) {
-    return 'I am sorry you are feeling this way. You do not have to solve everything at once, and I am here to listen. What feels most painful about this moment?';
+    return choose([
+      'I am sorry you are feeling this way. You do not have to solve everything at once, and I am here to listen. What feels most painful about this moment?',
+      'That sounds difficult to carry. We can stay with one feeling at a time. What do you need most right now: to be heard, to feel calmer, or to think through a next step?'
+    ]);
   }
   return context
-    ? `I hear you. This sounds connected to what you shared about "${context}". You do not have to handle it all at once. What part feels heaviest right now?`
-    : 'I hear you. You do not have to handle everything at once. Tell me a little more about what is weighing on you, and I will stay with you through it.';
+    ? choose([
+      `I hear you. This seems connected to what you shared about "${context}". Which part would you like me to understand better?`,
+      'I am listening. You do not have to solve it before talking about it. What feeling is strongest for you right now?'
+    ])
+    : choose([
+      'I am listening. You do not have to handle everything at once. What feels most important to share first?',
+      'Take your time. You can start with what happened, how you feel, or simply what you need from me right now.'
+    ]);
 };
 
 const generateAiReply = async (userMessage = '', conversation = []) => {
