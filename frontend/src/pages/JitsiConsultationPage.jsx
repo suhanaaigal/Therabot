@@ -253,7 +253,6 @@ export default function JitsiConsultationPage() {
         {role === 'doctor' && (
           <section style={styles.recordingPanel}>
             <h2 style={styles.panelTitle}>Automatic conversation report</h2>
-            <p style={styles.notice}>The browser captures this meeting tab's shared audio plus the doctor's microphone, transcribes it locally, then sends only the transcript to the app to generate and save the report. Use desktop Chrome or Edge and enable Share tab audio in the browser prompt.</p>
             <label style={styles.consent}>
               <input type="checkbox" checked={consent} disabled={recording || busy} onChange={event => setConsent(event.target.checked)} />
               I have informed the patient and received consent to record and transcribe this consultation.
