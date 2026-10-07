@@ -31,6 +31,28 @@ const resampleTo16k = (audio, sampleRate) => {
   return output;
 };
 
+const cleanTranscript = (value) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+
+  const words = text.split(' ');
+  const cleaned = [];
+  for (const word of words) {
+    const previous = cleaned[cleaned.length - 1];
+    if (previous && previous.toLowerCase().replace(/[.,!?]/g, '') === word.toLowerCase().replace(/[.,!?]/g, '')) {
+      continue;
+    }
+    cleaned.push(word);
+  }
+
+  const result = cleaned.join(' ');
+  return result
+    .replace(/(?:\bhello\b[\s,.!?]*){3,}/gi, 'Hello. ')
+    .replace(/(?:\bhi\b[\s,.!?]*){3,}/gi, 'Hi. ')
+    .replace(/\s+([,.!?])/g, '$1')
+    .trim();
+};
+
 self.onmessage = async event => {
   try {
     const { audio, sampleRate } = event.data || {};
@@ -47,7 +69,7 @@ self.onmessage = async event => {
       chunk_length_s: 20,
       stride_length_s: 3
     });
-    self.postMessage({ type: 'result', transcript: String(result.text || '').trim() });
+    self.postMessage({ type: 'result', transcript: cleanTranscript(result.text) });
   } catch (error) {
     self.postMessage({ type: 'error', message: error.message || 'Audio transcription failed.' });
   }

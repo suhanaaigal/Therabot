@@ -86,19 +86,27 @@ const generateFallbackClinicalNote = (transcript = [], patientName = 'the patien
   const patientMessages = messages.filter(item => /patient/i.test(item.author)).map(item => item.message);
   const doctorMessages = messages.filter(item => /doctor|clinician/i.test(item.author)).map(item => item.message);
   const transcriptText = messages.map(item => `${item.author}: ${item.message}`).join(' ');
+  const isCombinedAudio = messages.some(item => /consultation audio/i.test(item.author));
+  const cleanedTranscriptText = transcriptText
+    .replace(/(?:\bhello\b[\s,.!?]*){3,}/gi, 'Hello. ')
+    .replace(/(?:\bhi\b[\s,.!?]*){3,}/gi, 'Hi. ')
+    .replace(/\s+/g, ' ')
+    .trim();
   const concernKeywords = ['stress', 'anxiety', 'sleep', 'mood', 'fear', 'panic', 'sad', 'depressed', 'lonely', 'overwhelmed', 'burnout'];
-  const concerns = concernKeywords.filter(keyword => transcriptText.toLowerCase().includes(keyword));
-  const patientSummary = (patientMessages.slice(-2).join(' ') || transcriptText).slice(0, 500);
+  const concerns = concernKeywords.filter(keyword => cleanedTranscriptText.toLowerCase().includes(keyword));
+  const patientSummary = isCombinedAudio
+    ? `Combined consultation audio indicates: ${cleanedTranscriptText.replace(/^Consultation audio:\s*/i, '').slice(0, 500)}`
+    : (patientMessages.slice(-2).join(' ') || cleanedTranscriptText).slice(0, 500);
   const doctorSummary = (doctorMessages.slice(-2).join(' ') || 'Supportive guidance was discussed during the consultation.').slice(0, 500);
-  const safetyFlag = /suicid|self[- ]harm|kill myself|hurt myself|unsafe/i.test(transcriptText)
+  const safetyFlag = /suicid|self[- ]harm|kill myself|hurt myself|unsafe/i.test(cleanedTranscriptText)
     ? 'Safety concern mentioned in transcript; immediate clinician review is required.'
     : 'No immediate safety concern was identified in the captured transcript.';
 
   return [
     `Subjective\nPatient: ${patientName}. ${patientSummary}`,
-    `Objective\nConsultation transcript captured from the patient-doctor conversation. Report prepared by the system for review by ${doctorName}.`,
+    `Objective\n${isCombinedAudio ? 'A combined consultation audio transcript was captured; speaker attribution was not available.' : 'Consultation transcript captured from the patient-doctor conversation.'} Report prepared by the system for review by ${doctorName}.`,
     `Assessment\nReported themes: ${concerns.length ? concerns.join(', ') : 'No specific concern keyword identified'}. ${safetyFlag}`,
-    `Plan\n${doctorSummary} Clinician should verify this draft, complete any missing assessment, and decide follow-up actions.`
+    `Plan\n${isCombinedAudio ? 'Clinician should verify the audio transcript, correct speaker attribution, and confirm the patient-reported concerns before making care decisions.' : doctorSummary} Clinician should verify this draft, complete any missing assessment, and decide follow-up actions.`
   ].join('\n\n');
 };
 
