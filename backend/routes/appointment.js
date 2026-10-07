@@ -377,9 +377,11 @@ router.patch('/:id/approve', requireDoctorSession, async (req, res) => {
       }
       if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
 
-      const conflict = await getAppointmentConflict(appointment.doctorId, appointment.scheduledDate, appointment.scheduledTime, appointment._id);
+      const conflict = isPriorityAppointment(appointment)
+        ? null
+        : await getAppointmentConflict(appointment.doctorId, appointment.scheduledDate, appointment.scheduledTime, appointment._id);
 
-      if (conflict && !isPriorityAppointment(appointment)) {
+      if (conflict) {
         return res.status(409).json({ error: 'This time slot is no longer available. Please choose another slot.' });
       }
 
@@ -426,8 +428,10 @@ router.patch('/:id/approve', requireDoctorSession, async (req, res) => {
     }
     if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
 
-    const conflict = await getAppointmentConflict(appointment.doctorId, appointment.scheduledDate, appointment.scheduledTime, appointment._id);
-    if (conflict && !isPriorityAppointment(appointment)) {
+    const conflict = isPriorityAppointment(appointment)
+      ? null
+      : await getAppointmentConflict(appointment.doctorId, appointment.scheduledDate, appointment.scheduledTime, appointment._id);
+    if (conflict) {
       return res.status(409).json({ error: 'This time slot is no longer available. Please choose another slot.' });
     }
 
@@ -543,7 +547,7 @@ router.patch('/:id/start-call', requireDoctorSession, async (req, res) => {
         return res.status(403).json({ error: 'Only the assigned doctor can start this call.' });
       }
       if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
-      if (!isAppointmentLive(appointment.scheduledDate, appointment.scheduledTime)) {
+      if (!isPriorityAppointment(appointment) && !isAppointmentLive(appointment.scheduledDate, appointment.scheduledTime)) {
         return res.status(409).json({ error: 'The call can only be started during the scheduled appointment time.' });
       }
       appointment.callStarted = true;
@@ -564,7 +568,7 @@ router.patch('/:id/start-call', requireDoctorSession, async (req, res) => {
     }
     if (!await findPatientAssignedToDoctor(appointment.patientId, req.doctorId)) return res.status(403).json({ error: 'The patient is assigned to a different doctor.' });
 
-    if (!isAppointmentLive(appointment.scheduledDate, appointment.scheduledTime)) {
+    if (!isPriorityAppointment(appointment) && !isAppointmentLive(appointment.scheduledDate, appointment.scheduledTime)) {
       return res.status(409).json({ error: 'The call can only be started during the scheduled appointment time.' });
     }
 
@@ -718,7 +722,8 @@ router.get('/all', requireDoctorSession, async (req, res) => {
       const validAppointments = demoAppointments.filter(
         app => String(app.doctorId) === String(req.doctorId) &&
           [...demoPatients.values()].some(patient => String(patient._id) === String(app.patientId) && String(patient.assignedDoctorId || 'doctor-default') === String(req.doctorId)) &&
-          !isDemoRecord(app.patientName) && isFutureSlot(app.scheduledDate, app.scheduledTime)
+          !isDemoRecord(app.patientName) &&
+          (isPriorityAppointment(app) || isFutureSlot(app.scheduledDate, app.scheduledTime))
       );
       return res.status(200).json(validAppointments);
     }
@@ -726,7 +731,8 @@ router.get('/all', requireDoctorSession, async (req, res) => {
     const patientIds = (await Patient.find({ assignedDoctorId: String(req.doctorId) }).select('_id')).map(patient => String(patient._id));
     const appointments = await Appointment.find({ doctorId: req.doctorId, patientId: { $in: patientIds } }).sort({ createdAt: -1 });
     const validAppointments = appointments.filter(
-      app => !isDemoRecord(app.patientName) && isFutureSlot(app.scheduledDate, app.scheduledTime)
+      app => !isDemoRecord(app.patientName) &&
+        (isPriorityAppointment(app) || isFutureSlot(app.scheduledDate, app.scheduledTime))
     );
     res.status(200).json(validAppointments);
   } catch (err) {

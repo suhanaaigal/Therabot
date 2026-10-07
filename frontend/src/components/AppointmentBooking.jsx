@@ -9,6 +9,8 @@ const isAppointmentLive = (scheduledDate, scheduledTime, callEnded = false) => {
   return now >= appointmentDate.getTime() - (2 * 60 * 1000) && now <= appointmentDate.getTime() + 60 * 60 * 1000;
 };
 
+const isPriorityAppointment = urgency => ['Urgent', 'Emergency'].includes(urgency);
+
 const getAppointmentCountdown = (scheduledDate, scheduledTime, currentTime) => {
   const appointmentTime = new Date(`${scheduledDate}T${scheduledTime}`).getTime();
   if (!Number.isFinite(appointmentTime)) return '';
@@ -115,7 +117,7 @@ export default function AppointmentBooking({ patientName }) {
       alert('Please select a date and time.');
       return;
     }
-    if (slotStatus && !slotStatus.available) {
+    if (slotStatus && !slotStatus.available && !isPriorityAppointment(urgency)) {
       alert('That time is no longer available. Please choose another time.');
       return;
     }
@@ -204,15 +206,15 @@ export default function AppointmentBooking({ patientName }) {
 
         <button
           type="submit"
-          disabled={Boolean(slotStatus && !slotStatus.available)}
+          disabled={Boolean(slotStatus && !slotStatus.available && !isPriorityAppointment(urgency))}
           style={{
             width: '100%',
             padding: '10px',
-            background: slotStatus && !slotStatus.available ? '#94a3b8' : '#007bff',
+            background: slotStatus && !slotStatus.available && !isPriorityAppointment(urgency) ? '#94a3b8' : '#007bff',
             color: '#fff',
             border: 'none',
             borderRadius: '4px',
-            cursor: slotStatus && !slotStatus.available ? 'not-allowed' : 'pointer'
+            cursor: slotStatus && !slotStatus.available && !isPriorityAppointment(urgency) ? 'not-allowed' : 'pointer'
           }}
         >
           Request Appointment
@@ -239,7 +241,7 @@ export default function AppointmentBooking({ patientName }) {
                 <div style={{ marginTop: '8px' }}>
                   {app.callEnded ? (
                     <div style={{ color: '#64748b', fontSize: '13px' }}>This consultation has ended. The report is available in the doctor&apos;s patient record.</div>
-                  ) : isAppointmentLive(app.scheduledDate, app.scheduledTime) ? (
+                  ) : (isPriorityAppointment(app.urgency) || isAppointmentLive(app.scheduledDate, app.scheduledTime)) ? (
                     <>
                       <a href={`/#/call/${encodeURIComponent(app.roomUrl)}?role=patient&name=${encodeURIComponent(patientName || 'Patient')}&patient=${encodeURIComponent(patientName || 'Patient')}&date=${encodeURIComponent(app.scheduledDate)}&time=${encodeURIComponent(app.scheduledTime)}&appointmentId=${encodeURIComponent(app._id)}`} target="_blank" rel="noopener noreferrer" style={{ color: '#0f766e', fontWeight: 'bold', marginRight: '12px' }}>
                         Join In-App Call
@@ -258,7 +260,7 @@ export default function AppointmentBooking({ patientName }) {
                       >
                         Join Jitsi + Auto Report
                       </a>
-                      Link activates 2 minutes before the appointment and remains available for one hour.
+                      Link activates 2 minutes before the appointment and remains available for one hour. Urgent and Emergency consultations can be joined without a time-window restriction.
                     </div>
                   )}
                 </div>

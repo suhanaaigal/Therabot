@@ -218,6 +218,7 @@ function initials(name) { return String(name || 'P').split(/\s+/).map(part => pa
 
 function isUpcomingConsultation(item) {
   if (item.callEnded) return false;
+  if (['Urgent', 'Emergency'].includes(item.urgency)) return true;
   const appointmentTime = new Date(`${item.scheduledDate}T${item.scheduledTime}`).getTime();
   return !Number.isFinite(appointmentTime) || appointmentTime + (60 * 60 * 1000) >= Date.now();
 }
