@@ -196,11 +196,13 @@ router.patch('/patient/:id/notes', requireDoctorSession, async (req, res) => {
       return res.status(200).json({ notes: patient.doctorNotes });
     }
 
-    const patient = await Patient.findOne({ _id: patientId, assignedDoctorId: String(req.doctorId) });
+    const patient = await Patient.findOneAndUpdate(
+      { _id: patientId, assignedDoctorId: String(req.doctorId) },
+      { $set: { doctorNotes: notes } },
+      { new: true, runValidators: true }
+    ).select('doctorNotes');
     if (!patient) return res.status(404).json({ error: 'Patient not found in your care team.' });
-    patient.doctorNotes = notes;
-    await patient.save();
-    return res.status(200).json({ notes: patient.doctorNotes });
+    return res.status(200).json({ notes: patient.doctorNotes || '' });
   } catch (error) {
     console.error('Patient notes update failed:', error.message);
     return res.status(500).json({ error: 'Could not save the patient note.' });

@@ -165,6 +165,7 @@ export default function TherabotDoctorDashboard() {
       const response = await api.patch(`/api/doctor/patient/${encodeURIComponent(selectedPatient._id)}/notes`, { notes: doctorNotes });
       setDoctorNotes(response.data.notes || '');
       setSelectedPatient(previous => previous ? { ...previous, doctorNotes: response.data.notes || '' } : previous);
+      await inspectPatient(selectedPatient._id);
     } catch (error) {
       window.alert(error?.response?.data?.error || 'Could not save the patient note.');
     } finally {
