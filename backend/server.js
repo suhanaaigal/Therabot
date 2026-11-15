@@ -32,6 +32,7 @@ const { verifyDoctorSession } = require('./doctorSession');
 const { createRateLimiter } = require('./middleware/rateLimit');
 const { hashPatientPassword } = require('./patientPassword');
 const { migratePasswords } = require('./scripts/setProductionPasswords');
+const { replaceWithPresentationData } = require('./scripts/replaceWithPresentationData');
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const app = express();
@@ -297,6 +298,12 @@ const startServer = async () => {
           patientPassword: process.env.PASSWORD_MIGRATION_PATIENT_PASSWORD
         });
         console.log(`Password migration updated doctor: ${result.doctorCount}, patients: ${result.patientCount}. Remove PASSWORD_MIGRATION_* variables now.`);
+      }
+      if (process.env.PRESENTATION_DATA_MIGRATION === 'replace' && process.env.PASSWORD_MIGRATION_PATIENT_PASSWORD) {
+        const result = await replaceWithPresentationData({
+          patientPassword: process.env.PASSWORD_MIGRATION_PATIENT_PASSWORD
+        });
+        console.log(`Presentation data migration replaced patients: ${result.patients}, check-ins: ${result.checkIns}, questionnaires: ${result.questionnaires}, appointments: ${result.appointments}. Remove PRESENTATION_DATA_MIGRATION and PASSWORD_MIGRATION_* now.`);
       }
     } else {
       mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 5000 })

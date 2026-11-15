@@ -99,3 +99,11 @@ PASSWORD_MIGRATION_PATIENT_PASSWORD="your-patient-password"
 ```
 
 The backend runs the migration during startup and logs account counts. Remove both variables immediately after the successful deploy, then redeploy once more. Never commit these passwords or add them to frontend environment variables. The manual script remains available at `backend/scripts/setProductionPasswords.js` if Render Shell becomes available.
+
+To replace all live patient records with the five current presentation patients and their seeded check-ins, screenings, and appointments, also set:
+
+```text
+PRESENTATION_DATA_MIGRATION=replace
+```
+
+Deploy once, confirm the presentation migration counts in the logs, then remove `PRESENTATION_DATA_MIGRATION` and both `PASSWORD_MIGRATION_*` variables and deploy again. This intentionally deletes all existing patient-linked records; the doctor account is preserved.
