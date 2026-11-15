@@ -5,14 +5,22 @@ const hostedBackendUrl = configuredBackendUrl && !/^https?:\/\//i.test(configure
 	? `https://${configuredBackendUrl}`
 	: configuredBackendUrl;
 
-const localDevelopmentBackendUrl = import.meta.env.DEV
-	? 'https://therabot-backend-go2r.onrender.com'
-	: `${window.location.protocol}//${window.location.hostname}:5000`;
+const sameOriginBackendUrl = `${window.location.protocol}//${window.location.hostname}:5000`;
 
-export const backendUrl = hostedBackendUrl || localDevelopmentBackendUrl;
+export const backendUrl = hostedBackendUrl || sameOriginBackendUrl;
 export const api = axios.create({ baseURL: backendUrl });
+const isDoctorRequest = url => {
+	const path = String(url || '');
+	return path.startsWith('/api/doctor') ||
+		path.includes('/api/appointment/all') ||
+		path.includes('/api/appointment/doctor/') ||
+		path.includes('/api/appointment/session/') ||
+		/\/api\/appointment\/[^/]+\/(?:approve|decline|end-call)$/.test(path);
+};
 api.interceptors.request.use(config => {
-	const sessionToken = localStorage.getItem('doctorSessionToken') || localStorage.getItem('patientSessionToken');
+	const doctorToken = localStorage.getItem('doctorSessionToken');
+	const patientToken = localStorage.getItem('patientSessionToken');
+	const sessionToken = isDoctorRequest(config.url) ? (doctorToken || patientToken) : (patientToken || doctorToken);
 	if (sessionToken) config.headers.Authorization = `Bearer ${sessionToken}`;
 	return config;
 });

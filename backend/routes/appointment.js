@@ -6,8 +6,10 @@ const Doctor = require('../models/Doctor');
 const Patient = require('../models/Patient');
 const Notification = require('../models/Notification');
 const { demoAppointments, demoCallSessions, demoDoctors, demoNotifications, demoPatients, ensureDefaultDoctor } = require('../demoStore');
+const { hashPatientPassword } = require('../patientPassword');
 const { requireDoctorSession } = require('../doctorSession');
 const { requirePatientSession } = require('../patientSession');
+const { parseKolkataDateTime, getAppointmentInstant, hasConflict } = require('../services/appointmentTime');
 
 const isDemoRecord = (value = '') => /\b(test|demo|dummy|sample)\b/i.test(String(value));
 
@@ -28,27 +30,24 @@ const createDoctorUpdateNotification = async ({ patientId, patientName, message,
 
   const exists = await Notification.findOne({ patientId, type: 'doctor_update', message });
   if (!exists) {
-    await Notification.create({ patientId, patientName, type: 'doctor_update', severity, message, sentToEmergencyContact: false, sentToDoctor: false });
+    await Notification.create({ patientId, patientName, type: 'doctor_update', severity, message, sentToDoctor: false });
   }
 };
 
 const isFutureSlot = (scheduledDate, scheduledTime) => {
-  if (!scheduledDate) return false;
+  const scheduleDate = parseKolkataDateTime(scheduledDate, scheduledTime);
+  return Boolean(scheduleDate && scheduleDate.getTime() >= Date.now());
+};
 
-  const datePart = String(scheduledDate).trim();
-  const timePart = String(scheduledTime || '00:00').trim();
-  const scheduleDate = new Date(`${datePart}T${timePart || '00:00'}`);
-
-  if (Number.isNaN(scheduleDate.getTime())) {
-    return true;
-  }
-
-  return scheduleDate.getTime() >= Date.now();
+const isValidDateTime = (scheduledDate, scheduledTime) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(scheduledDate || '')) ||
+      !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(scheduledTime || ''))) return false;
+  return Boolean(parseKolkataDateTime(scheduledDate, scheduledTime));
 };
 
 const isAppointmentLive = (scheduledDate, scheduledTime) => {
-  const appointmentDate = new Date(`${scheduledDate}T${scheduledTime}`);
-  if (Number.isNaN(appointmentDate.getTime())) return false;
+  const appointmentDate = parseKolkataDateTime(scheduledDate, scheduledTime);
+  if (!appointmentDate) return false;
   const now = Date.now();
   const start = appointmentDate.getTime();
   return now >= start && now <= start + (60 * 60 * 1000);
@@ -60,17 +59,17 @@ const getDemoDoctor = () => ensureDefaultDoctor();
 
 const getDefaultDoctor = async () => {
   if (isDemoMode()) {
-    return getDemoDoctor();
+    return await getDemoDoctor();
   }
 
-  let doctor = await Doctor.findOne().sort({ createdAt: 1 }).catch(() => null);
+  let doctor = await Doctor.findOne().sort({ createdAt: 1 });
 
-  if (!doctor) {
+  if (!doctor && process.env.NODE_ENV !== 'production' && process.env.DEMO_DOCTOR_PASSWORD) {
     doctor = await Doctor.findOneAndUpdate(
       { username: 'doctor' },
       {
         username: 'doctor',
-        password: 'doctor123',
+        password: await hashPatientPassword(process.env.DEMO_DOCTOR_PASSWORD),
         fullName: 'Dr. Suhana Aigal',
         specialty: 'Mental Wellness'
       },
@@ -95,24 +94,12 @@ const findPatientAssignedToDoctor = async (patientId, doctorId) => {
   return Patient.findOne({ _id: patientId, assignedDoctorId: String(doctorId) }).select('_id');
 };
 
-const getSlotMinutes = (scheduledTime) => {
-  const match = String(scheduledTime || '').match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59 ? hours * 60 + minutes : null;
-};
-
 const isPriorityAppointment = (appointment) => ['urgent', 'emergency'].includes(String(appointment?.urgency || '').toLowerCase());
 
 const getAppointmentConflict = async (doctorId, scheduledDate, scheduledTime, excludeId = null) => {
-  const requestedMinutes = getSlotMinutes(scheduledTime);
-  const matchesSlot = (item) => {
-    if (String(item.scheduledDate) !== String(scheduledDate)) return false;
-    if (requestedMinutes === null) return String(item.scheduledTime) === String(scheduledTime);
-    const itemMinutes = getSlotMinutes(item.scheduledTime);
-    return itemMinutes !== null && Math.abs(itemMinutes - requestedMinutes) <= 30;
-  };
+  const requestedAt = parseKolkataDateTime(scheduledDate, scheduledTime);
+  if (!requestedAt) return null;
+  const matchesSlot = item => hasConflict(requestedAt, getAppointmentInstant(item));
 
   if (isDemoMode()) {
     return demoAppointments.find(item =>
@@ -122,7 +109,7 @@ const getAppointmentConflict = async (doctorId, scheduledDate, scheduledTime, ex
       (!excludeId || String(item._id) !== String(excludeId))
     ) || null;
   }
-  const query = { doctorId, scheduledDate, status: { $in: ['Pending', 'Approved'] } };
+  const query = { doctorId, status: { $in: ['Pending', 'Approved'] } };
 
   if (excludeId) {
     query._id = { $ne: excludeId };
@@ -177,7 +164,7 @@ const generateSessionSummary = (transcript = []) => {
 router.get('/doctors', async (req, res) => {
   try {
     if (isDemoMode()) {
-      getDemoDoctor();
+      await getDemoDoctor();
       return res.status(200).json([...demoDoctors.values()].map(doctor => ({
         _id: String(doctor._id),
         fullName: doctor.fullName,
@@ -188,18 +175,9 @@ router.get('/doctors', async (req, res) => {
 
     let doctors = await Doctor.find().select('_id fullName specialty username').sort({ fullName: 1 });
 
-    if (!doctors.length) {
-      const seededDoctor = await Doctor.findOneAndUpdate(
-        { username: 'doctor' },
-        {
-          username: 'doctor',
-          password: 'doctor123',
-          fullName: 'Dr. Suhana Aigal',
-          specialty: 'Mental Wellness'
-        },
-        { new: true, upsert: true, setDefaultsOnInsert: true }
-      );
-      doctors = [seededDoctor];
+    if (!doctors.length && process.env.NODE_ENV !== 'production' && process.env.DEMO_DOCTOR_PASSWORD) {
+      const seededDoctor = await getDefaultDoctor();
+      if (seededDoctor) doctors = [seededDoctor];
     }
 
     res.status(200).json(doctors.map(doctor => ({
@@ -222,8 +200,8 @@ router.get('/check-availability', async (req, res) => {
       doctorId = doctor?._id?.toString();
     }
 
-    if (!doctorId || !scheduledDate || !scheduledTime) {
-      return res.status(400).json({ error: 'doctorId, scheduledDate and scheduledTime are required.' });
+    if (!doctorId || !isValidDateTime(scheduledDate, scheduledTime) || !isFutureSlot(scheduledDate, scheduledTime)) {
+      return res.status(400).json({ error: 'doctorId and a valid future scheduled date and time are required.' });
     }
 
     const conflict = await getAppointmentConflict(doctorId, scheduledDate, scheduledTime);
@@ -231,7 +209,6 @@ router.get('/check-availability', async (req, res) => {
       available: !conflict,
       conflict: conflict ? {
         _id: conflict._id,
-        patientName: conflict.patientName,
         scheduledDate: conflict.scheduledDate,
         scheduledTime: conflict.scheduledTime,
         status: conflict.status
@@ -244,18 +221,24 @@ router.get('/check-availability', async (req, res) => {
 
 router.post('/request', requirePatientSession, async (req, res) => {
   try {
-    let { patientId, patientName, doctorId, doctorName, scheduledDate, scheduledTime, urgency } = req.body;
-    if (String(req.patientId) !== String(patientId)) return res.status(403).json({ error: 'You can only request appointments for your own account.' });
+    const body = req.body || {};
+    let { patientName, doctorId, doctorName, scheduledDate, scheduledTime, urgency } = body;
+    const patientId = String(req.patientId);
+    if (typeof doctorId !== 'string' || !doctorId || !isValidDateTime(scheduledDate, scheduledTime) ||
+        !isFutureSlot(scheduledDate, scheduledTime) ||
+        (urgency !== undefined && !['Routine', 'Urgent', 'Emergency'].includes(urgency))) {
+      return res.status(400).json({ error: 'Choose a doctor, a valid date and time, and a supported urgency.' });
+    }
 
     const fallbackDoctor = await getDefaultDoctor();
     const resolvedDoctorId = doctorId || fallbackDoctor?._id?.toString();
-    const normalizedPatientId = patientId || 'demo-patient-id';
+    const normalizedPatientId = patientId;
 
     if (!resolvedDoctorId || !scheduledDate || !scheduledTime) {
       return res.status(400).json({ error: 'doctorId, scheduledDate and scheduledTime are required.' });
     }
 
-    const doctor = isDemoMode() ? demoDoctors.get(resolvedDoctorId) || getDemoDoctor() : await Doctor.findById(resolvedDoctorId).catch(() => null);
+    const doctor = isDemoMode() ? demoDoctors.get(resolvedDoctorId) || await getDemoDoctor() : await Doctor.findById(resolvedDoctorId);
     const patient = isDemoMode()
       ? [...demoPatients.values()].find(item => String(item._id) === String(normalizedPatientId))
       : await Patient.findById(normalizedPatientId);
@@ -263,6 +246,7 @@ router.post('/request', requirePatientSession, async (req, res) => {
     if (String(patient.assignedDoctorId || '') !== String(resolvedDoctorId)) {
       return res.status(403).json({ error: 'This patient is assigned to a different doctor.' });
     }
+    patientName = patient.fullName || 'Patient';
     const conflict = await getAppointmentConflict(resolvedDoctorId, scheduledDate, scheduledTime);
 
     if (isDemoMode()) {
@@ -274,6 +258,7 @@ router.post('/request', requirePatientSession, async (req, res) => {
         doctorName: doctor?.fullName || doctorName || 'Doctor',
         scheduledDate,
         scheduledTime,
+        scheduledAt: parseKolkataDateTime(scheduledDate, scheduledTime),
         urgency: ['Urgent', 'Emergency'].includes(urgency) ? urgency : 'Routine',
         status: 'Pending',
         roomUrl: '',
@@ -297,6 +282,7 @@ router.post('/request', requirePatientSession, async (req, res) => {
       patientName: patientName || 'Patient',
       doctorId: resolvedDoctorId,
       doctorName: doctor?.fullName || doctorName || 'Doctor',
+      scheduledAt: parseKolkataDateTime(scheduledDate, scheduledTime),
       scheduledDate,
       scheduledTime,
       urgency: ['Urgent', 'Emergency'].includes(urgency) ? urgency : 'Routine',
@@ -344,7 +330,7 @@ router.get('/doctor/:doctorId/requests', requireDoctorSession, async (req, res) 
         isAvailable: !demoAppointments.some(item =>
           String(item.doctorId) === String(appointment.doctorId) &&
           String(item.scheduledDate) === String(appointment.scheduledDate) &&
-          Math.abs((getSlotMinutes(item.scheduledTime) ?? -9999) - (getSlotMinutes(appointment.scheduledTime) ?? -9998)) <= 30 &&
+          hasConflict(getAppointmentInstant(item), getAppointmentInstant(appointment)) &&
           item._id !== appointment._id &&
           ['Pending', 'Approved'].includes(item.status)
         )
@@ -406,6 +392,7 @@ router.patch('/:id/approve', requireDoctorSession, async (req, res) => {
           patientName: appointment.patientName,
           doctorName: appointment.doctorName,
           roomUrl: appointment.roomUrl,
+          scheduledAt: appointment.scheduledAt,
           scheduledDate: appointment.scheduledDate,
           scheduledTime: appointment.scheduledTime,
           transcript: [],
@@ -457,6 +444,7 @@ router.patch('/:id/approve', requireDoctorSession, async (req, res) => {
         patientName: appointment.patientName,
         doctorName: appointment.doctorName,
         roomUrl,
+        scheduledAt: appointment.scheduledAt,
         scheduledDate: appointment.scheduledDate,
         scheduledTime: appointment.scheduledTime,
         transcript: [],
@@ -583,7 +571,6 @@ router.patch('/:id/start-call', requireDoctorSession, async (req, res) => {
       type: 'doctor_update',
       severity: 'info',
       message: `Your doctor has started the call for ${appointment.scheduledDate} at ${appointment.scheduledTime}. Join here: ${appointment.roomUrl}`,
-      sentToEmergencyContact: false,
       sentToDoctor: false
     });
 
@@ -621,11 +608,12 @@ router.patch('/:id/end-call', requireDoctorSession, async (req, res) => {
 // Book a new appointment
 router.post('/book', requireDoctorSession, async (req, res) => {
   try {
-    let { patientId, patientName, doctorName, scheduledDate, scheduledTime } = req.body;
+    let { patientId, patientName, doctorName, scheduledDate, scheduledTime } = req.body || {};
     const doctorId = String(req.doctorId);
 
-    if (!patientId || !doctorId || !scheduledDate || !scheduledTime) {
-      return res.status(400).json({ error: 'patientId, doctorId, scheduledDate and scheduledTime are required.' });
+    if (typeof patientId !== 'string' || !patientId || !isValidDateTime(scheduledDate, scheduledTime) ||
+        !isFutureSlot(scheduledDate, scheduledTime)) {
+      return res.status(400).json({ error: 'patientId and a valid future scheduled date and time are required.' });
     }
 
     const patient = isDemoMode()
@@ -633,9 +621,10 @@ router.post('/book', requireDoctorSession, async (req, res) => {
       : await Patient.findById(patientId);
     if (!patient) return res.status(404).json({ error: 'Patient account not found.' });
     if (String(patient.assignedDoctorId || '') !== doctorId) return res.status(403).json({ error: 'This patient is assigned to a different doctor.' });
+    patientName = patient.fullName || patientName || 'Patient';
 
     if (isDemoMode()) {
-      const doctor = demoDoctors.get(doctorId) || getDemoDoctor();
+      const doctor = demoDoctors.get(doctorId) || await getDemoDoctor();
       const roomUrl = makeJitsiRoom();
       const appointment = {
         _id: `demo-apt-${Date.now()}`,
@@ -645,6 +634,7 @@ router.post('/book', requireDoctorSession, async (req, res) => {
         doctorName: doctor?.fullName || doctorName || 'Doctor',
         scheduledDate,
         scheduledTime,
+        scheduledAt: parseKolkataDateTime(scheduledDate, scheduledTime),
         status: 'Approved',
         roomUrl,
         callStarted: true,
@@ -659,6 +649,7 @@ router.post('/book', requireDoctorSession, async (req, res) => {
         patientName: patientName || 'Patient',
         doctorName: doctor?.fullName || doctorName || 'Doctor',
         roomUrl,
+        scheduledAt: parseKolkataDateTime(scheduledDate, scheduledTime),
         scheduledDate,
         scheduledTime,
         transcript: [],
@@ -686,6 +677,7 @@ router.post('/book', requireDoctorSession, async (req, res) => {
       patientName,
       doctorId,
       doctorName: doctor?.fullName || doctorName || 'Doctor',
+      scheduledAt: parseKolkataDateTime(scheduledDate, scheduledTime),
       scheduledDate,
       scheduledTime,
       status: 'Approved',
@@ -700,6 +692,7 @@ router.post('/book', requireDoctorSession, async (req, res) => {
       patientName,
       doctorName: doctor?.fullName || doctorName || 'Doctor',
       roomUrl: appointment.roomUrl,
+      scheduledAt: appointment.scheduledAt,
       scheduledDate,
       scheduledTime,
       transcript: [],

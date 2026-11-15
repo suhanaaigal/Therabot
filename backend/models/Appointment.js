@@ -5,8 +5,9 @@ const appointmentSchema = new mongoose.Schema({
   patientName: { type: String, required: true },
   doctorId: { type: String, default: '' },
   doctorName: { type: String, default: 'Doctor' },
-  scheduledDate: { type: String, required: true },
-  scheduledTime: { type: String, required: true },
+  scheduledAt: { type: Date, index: true },
+  scheduledDate: { type: String },
+  scheduledTime: { type: String },
   urgency: { type: String, enum: ['Routine', 'Urgent', 'Emergency'], default: 'Routine' },
   status: { type: String, enum: ['Pending', 'Approved', 'Declined', 'Completed', 'Cancelled'], default: 'Pending' },
   roomUrl: { type: String, default: '' },
@@ -16,5 +17,7 @@ const appointmentSchema = new mongoose.Schema({
   declinedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now }
 });
+
+appointmentSchema.index({ doctorId: 1, scheduledAt: 1, status: 1 });
 
 module.exports = mongoose.model('Appointment', appointmentSchema);

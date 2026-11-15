@@ -1,2 +1,6 @@
 **/.env
 !**/.env.example
+**/node_modules/
+**/dist/
+backend/evaluation/.generated-results/
+!ml-service/evaluation/crisis_short_test_template.csv

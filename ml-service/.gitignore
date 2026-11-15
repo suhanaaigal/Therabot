@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+data/
+models/
+outputs/
+*.csv
+!evaluation/crisis_short_test_template.csv
+*.jsonl
+*.parquet
+replay_S17.json
+!resources/coping_snippets.json
+!evaluation/pilot_template.csv

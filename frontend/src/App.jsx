@@ -6,6 +6,7 @@ import DoctorDashboard from './pages/TherabotDoctorDashboard';
 import TherabotAuthPage from './pages/TherabotAuthPage';
 import VideoCallPage from './pages/VideoCallPage';
 import JitsiConsultationPage from './pages/JitsiConsultationPage';
+import PrivacyPage from './pages/PrivacyPage';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
         <Route path="/call/:roomId" element={<VideoCallPage />} />
         <Route path="/jitsi/:roomUrl" element={<JitsiConsultationPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
       </Routes>
     </HashRouter>
   );

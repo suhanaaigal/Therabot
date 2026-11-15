@@ -6,12 +6,14 @@ const average = (items, key) => items.length
   ? (items.reduce((total, item) => total + Number(item[key] || 0), 0) / items.length).toFixed(1)
   : '—';
 
-const getPoint = (item, index, count, key) => {
+const getPoint = (item, minimumTime, maximumTime, key) => {
   const innerWidth = chart.width - chart.left - chart.right;
   const innerHeight = chart.height - chart.top - chart.bottom;
   const score = Math.min(10, Math.max(1, Number(item[key]) || 1));
+  const timestamp = new Date(item.date).getTime();
+  const span = maximumTime - minimumTime;
   return {
-    x: count === 1 ? chart.left + innerWidth / 2 : chart.left + (index / (count - 1)) * innerWidth,
+    x: span <= 0 ? chart.left + innerWidth / 2 : chart.left + ((timestamp - minimumTime) / span) * innerWidth,
     y: chart.top + ((10 - score) / 9) * innerHeight,
     score,
     item
@@ -21,9 +23,14 @@ const getPoint = (item, index, count, key) => {
 export default function MoodTrendDashboard({ checkIns, loading, error, onCheckIn }) {
   const [rangeDays, setRangeDays] = useState(30);
   const cutoff = Date.now() - rangeDays * 24 * 60 * 60 * 1000;
-  const visibleCheckIns = checkIns.filter(item => new Date(item.date).getTime() >= cutoff);
-  const moodPoints = visibleCheckIns.map((item, index) => getPoint(item, index, visibleCheckIns.length, 'moodScore'));
-  const anxietyPoints = visibleCheckIns.map((item, index) => getPoint(item, index, visibleCheckIns.length, 'anxietyLevel'));
+  const visibleCheckIns = checkIns
+    .filter(item => new Date(item.date).getTime() >= cutoff)
+    .sort((first, second) => new Date(first.date) - new Date(second.date));
+  const times = visibleCheckIns.map(item => new Date(item.date).getTime());
+  const minimumTime = Math.min(...times);
+  const maximumTime = Math.max(...times);
+  const moodPoints = visibleCheckIns.map(item => getPoint(item, minimumTime, maximumTime, 'moodScore'));
+  const anxietyPoints = visibleCheckIns.map(item => getPoint(item, minimumTime, maximumTime, 'anxietyLevel'));
   const chartPath = points => points.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
   const dateLabel = date => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
@@ -57,10 +64,10 @@ export default function MoodTrendDashboard({ checkIns, loading, error, onCheckIn
                 {moodPoints.map((point, index) => <circle key={`mood-${index}`} cx={point.x} cy={point.y} r="4" className="mood-chart-point mood-chart-point-mood"><title>{`Mood ${point.score}/10 on ${dateLabel(point.item.date)}`}</title></circle>)}
                 {anxietyPoints.map((point, index) => <circle key={`anxiety-${index}`} cx={point.x} cy={point.y} r="4" className="mood-chart-point mood-chart-point-anxiety"><title>{`Anxiety ${point.score}/10 on ${dateLabel(point.item.date)}`}</title></circle>)}
                 {visibleCheckIns.length < 5 ? visibleCheckIns.map((item, index) => {
-                  const x = getPoint(item, index, visibleCheckIns.length, 'moodScore').x;
+                  const x = getPoint(item, minimumTime, maximumTime, 'moodScore').x;
                   return <text key={`date-${index}`} x={x} y={chart.height - 9} className="mood-chart-axis-label" textAnchor="middle">{dateLabel(item.date)}</text>;
                 }) : [0, Math.floor((visibleCheckIns.length - 1) / 2), visibleCheckIns.length - 1].map(index => {
-                  const x = getPoint(visibleCheckIns[index], index, visibleCheckIns.length, 'moodScore').x;
+                  const x = getPoint(visibleCheckIns[index], minimumTime, maximumTime, 'moodScore').x;
                   return <text key={`date-${index}`} x={x} y={chart.height - 9} className="mood-chart-axis-label" textAnchor="middle">{dateLabel(visibleCheckIns[index].date)}</text>;
                 })}
               </svg>

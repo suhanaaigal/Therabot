@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import ChatRoom from '../components/ChatRoom';
 
 const isAppointmentLive = (scheduledDate, scheduledTime, callEnded = false) => {
   if (callEnded) return false;
@@ -23,14 +22,12 @@ export default function DoctorDashboard() {
   const [appointments, setAppointments] = useState([]);
   const [doctorAppointments, setDoctorAppointments] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [callSessions, setCallSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
   const selectedPatientIdRef = useRef(null);
   const [transcriptText, setTranscriptText] = useState('');
   const [isDraftingNote, setIsDraftingNote] = useState(false);
   const [newConsultation, setNewConsultation] = useState({ date: '', time: '' });
   const [reportMode, setReportMode] = useState(false);
-  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isDoctorAuthenticated') === 'true';
@@ -45,7 +42,6 @@ export default function DoctorDashboard() {
     fetchCallSessions();
     fetchDoctorRequests();
     const timer = setInterval(() => {
-      setNow(Date.now());
       fetchPatients();
       fetchAppointments();
       fetchDoctorRequests();
@@ -95,7 +91,6 @@ export default function DoctorDashboard() {
   const fetchCallSessions = async () => {
     try {
       const res = await api.get('/api/appointment/sessions');
-      setCallSessions(res.data);
       setPatientCallSessions(previousSessions => {
         const patientId = selectedPatientIdRef.current;
         if (!patientId) return previousSessions;
@@ -118,8 +113,8 @@ export default function DoctorDashboard() {
       .filter(Boolean)
       .map((line) => {
         const normalized = line.trim();
-        const patientMatch = normalized.match(/^Patient\s*[:\-]?\s*(.*)$/i);
-        const doctorMatch = normalized.match(/^Doctor\s*[:\-]?\s*(.*)$/i);
+        const patientMatch = normalized.match(/^Patient\s*[:-]?\s*(.*)$/i);
+        const doctorMatch = normalized.match(/^Doctor\s*[:-]?\s*(.*)$/i);
 
         if (patientMatch) {
           return { author: 'Patient', message: patientMatch[1].trim(), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
@@ -151,7 +146,6 @@ export default function DoctorDashboard() {
       alert('Call transcript saved. Summary generated automatically from the conversation.');
       setTranscriptText('');
       setSelectedSession(res.data.session);
-      setCallSessions(prev => prev.map(session => session._id === res.data.session._id ? res.data.session : session));
       if (selectedPatient && selectedPatient._id === res.data.session.patientId) {
         setPatientCallSessions(prev => [res.data.session, ...prev.filter(session => session._id !== res.data.session._id)]);
       }
@@ -165,7 +159,6 @@ export default function DoctorDashboard() {
         });
         const updatedSession = noteResponse.data.session;
         setSelectedSession(updatedSession);
-        setCallSessions(prev => prev.map(session => session._id === updatedSession._id ? updatedSession : session));
         setPatientCallSessions(prev => prev.map(session => session._id === updatedSession._id ? updatedSession : session));
         alert('Call transcript saved and SOAP note drafted. Please review it before using it clinically.');
       } catch (noteError) {
@@ -188,8 +181,8 @@ export default function DoctorDashboard() {
       .map(line => line.trim())
       .filter(Boolean)
       .map(line => {
-        const patientMatch = line.match(/^Patient\s*[:\-]?\s*(.*)$/i);
-        const doctorMatch = line.match(/^Doctor\s*[:\-]?\s*(.*)$/i);
+        const patientMatch = line.match(/^Patient\s*[:-]?\s*(.*)$/i);
+        const doctorMatch = line.match(/^Doctor\s*[:-]?\s*(.*)$/i);
         return {
           author: patientMatch ? 'Patient' : 'Doctor',
           message: (patientMatch?.[1] || doctorMatch?.[1] || line).trim(),
@@ -208,7 +201,6 @@ export default function DoctorDashboard() {
       });
       const updatedSession = response.data.session;
       setSelectedSession(updatedSession);
-      setCallSessions(prev => prev.map(session => session._id === updatedSession._id ? updatedSession : session));
       setPatientCallSessions(prev => prev.map(session => session._id === updatedSession._id ? updatedSession : session));
       alert('SOAP note drafted. Please review it before using it clinically.');
     } catch (err) {
@@ -257,18 +249,6 @@ export default function DoctorDashboard() {
       fetchAppointments();
     } catch (err) {
       alert(err?.response?.data?.error || 'Unable to decline appointment.');
-    }
-  };
-
-  const startCall = async (appointmentId) => {
-    try {
-      const doctorId = localStorage.getItem('doctorAuthId') || localStorage.getItem('doctorId');
-      const response = await api.patch(`/api/appointment/${appointmentId}/start-call`, { doctorId });
-      alert(`Call started. Patient notified. Join: ${response.data.appointment.roomUrl}`);
-      fetchDoctorRequests();
-      fetchAppointments();
-    } catch (err) {
-      alert(err?.response?.data?.error || 'Unable to start call.');
     }
   };
 
@@ -789,15 +769,6 @@ const cardStyle = {
   borderRadius: '20px',
   boxShadow: '0 12px 28px rgba(15, 23, 42, 0.08)',
   padding: '22px 20px'
-};
-
-const infoTile = {
-  background: '#f8fafc',
-  border: '1px solid #e2e8f0',
-  borderRadius: '12px',
-  padding: '12px 14px',
-  color: '#1f2937',
-  lineHeight: '1.6'
 };
 
 const thStyle = { padding: '12px 10px', textAlign: 'left', fontSize: '12px', color: '#475569', textTransform: 'uppercase' };

@@ -9,10 +9,26 @@ test('keeps the default clinician distinct from additional demo clinicians', () 
     fullName: 'Dr. Two'
   });
 
-  const defaultDoctor = ensureDefaultDoctor();
+  const previousPassword = process.env.DEMO_DOCTOR_PASSWORD;
+  const previousEnvironment = process.env.NODE_ENV;
+  process.env.DEMO_DOCTOR_PASSWORD = 'test-demo-password';
+  delete process.env.NODE_ENV;
 
-  assert.equal(defaultDoctor._id, 'doctor-default');
-  assert.equal(defaultDoctor.username, 'doctor');
-  assert.equal(ensureDefaultDoctor()._id, 'doctor-default');
-  assert.equal(demoDoctors.get('doctor-two').fullName, 'Dr. Two');
+  const run = async () => {
+    try {
+      const defaultDoctor = await ensureDefaultDoctor();
+
+      assert.equal(defaultDoctor._id, 'doctor-default');
+      assert.equal(defaultDoctor.username, 'doctor');
+      assert.match(defaultDoctor.password, /^scrypt-v1\$/);
+      assert.equal((await ensureDefaultDoctor())._id, 'doctor-default');
+      assert.equal(demoDoctors.get('doctor-two').fullName, 'Dr. Two');
+    } finally {
+      if (previousPassword === undefined) delete process.env.DEMO_DOCTOR_PASSWORD;
+      else process.env.DEMO_DOCTOR_PASSWORD = previousPassword;
+      if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnvironment;
+    }
+  };
+  return run();
 });

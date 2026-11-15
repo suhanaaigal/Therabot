@@ -1,0 +1,9 @@
+cd D:\Documents\Projecttttt\mental-health-platform
+npm install
+npm start
+
+
+
+cd D:\Documents\Projecttttt\mental-health-platform\frontend
+npm install
+npm run dev

@@ -69,7 +69,7 @@ export default function VideoCallPage() {
       if (role === 'doctor' && recorderRef.current?.state === 'recording') {
         recorderRef.current.stop();
         setRecording(false);
-        socket.emit('call_recording_status', { room: roomId, recording: false });
+        socket.emit('call_recording_status', { appointmentId, recording: false });
       }
     };
 
@@ -93,7 +93,7 @@ export default function VideoCallPage() {
       };
       peer.onicecandidate = (event) => {
         if (event.candidate) {
-          socket.emit('webrtc_signal', { to: peerId, signal: { type: 'candidate', candidate: event.candidate } });
+          socket.emit('webrtc_signal', { appointmentId, to: peerId, signal: { type: 'candidate', candidate: event.candidate } });
         }
       };
       peer.onconnectionstatechange = () => {
@@ -115,7 +115,7 @@ export default function VideoCallPage() {
       if (initiator) {
         peer.createOffer()
           .then(offer => peer.setLocalDescription(offer))
-          .then(() => socket.emit('webrtc_signal', { to: peerId, signal: { type: 'offer', sdp: peer.localDescription } }))
+          .then(() => socket.emit('webrtc_signal', { appointmentId, to: peerId, signal: { type: 'offer', sdp: peer.localDescription } }))
           .catch(() => setError('Could not start the call connection.'));
       }
 
@@ -123,13 +123,15 @@ export default function VideoCallPage() {
     };
 
     const shouldInitiateOffer = peerId => socket.id < peerId;
-    const onPeerJoined = ({ peerId }) => {
+    const onPeerJoined = ({ peerId, appointmentId: joinedAppointmentId }) => {
+      if (String(joinedAppointmentId) !== String(appointmentId)) return;
       if (!peerId) return;
       setPeerDiscovered(true);
       setStatus('Other participant found. Establishing audio/video...');
       createPeer(peerId, shouldInitiateOffer(peerId));
     };
-    const onRoomPeers = ({ peerIds = [] } = {}) => {
+    const onRoomPeers = ({ peerIds = [], appointmentId: joinedAppointmentId } = {}) => {
+      if (String(joinedAppointmentId) !== String(appointmentId)) return;
       if (peerIds.length) {
         setPeerDiscovered(true);
         setStatus('Other participant found. Establishing audio/video...');
@@ -137,7 +139,8 @@ export default function VideoCallPage() {
       peerIds.forEach(peerId => createPeer(peerId, shouldInitiateOffer(peerId)));
     };
 
-    const onSignal = async ({ from, signal }) => {
+    const onSignal = async ({ from, signal, appointmentId: signalAppointmentId }) => {
+      if (String(signalAppointmentId) !== String(appointmentId)) return;
       if (!from || !signal) return;
       const peer = createPeer(from, false);
       const addPendingCandidates = async () => {
@@ -151,7 +154,7 @@ export default function VideoCallPage() {
           await peer.setRemoteDescription(signal.sdp);
           const answer = await peer.createAnswer();
           await peer.setLocalDescription(answer);
-          socket.emit('webrtc_signal', { to: from, signal: { type: 'answer', sdp: peer.localDescription } });
+          socket.emit('webrtc_signal', { appointmentId, to: from, signal: { type: 'answer', sdp: peer.localDescription } });
           await addPendingCandidates();
         } else if (signal.type === 'answer') {
           await peer.setRemoteDescription(signal.sdp);
@@ -169,6 +172,10 @@ export default function VideoCallPage() {
     const onRemoteRecording = ({ recording: isRecording }) => setRemoteRecording(isRecording);
 
     const start = async () => {
+      if (!appointmentId) {
+        setError('This call is not linked to an authorized appointment. Return to your dashboard and reopen the appointment.');
+        return;
+      }
       if (!isSecureCallContext) {
         setStatus('Phone calls need an HTTPS address. Use the secure link provided by your tunnel, or use the Jitsi fallback.');
         setError('This phone address uses HTTP. Mobile browsers block camera and microphone access unless the page is HTTPS.');
@@ -187,23 +194,35 @@ export default function VideoCallPage() {
         if (!mounted) return;
         localStreamRef.current = stream;
         localVideoRef.current.srcObject = stream;
-        if (!socket.connected) {
+        const token = localStorage.getItem(role === 'doctor' ? 'doctorSessionToken' : 'patientSessionToken');
+        if (!token) throw new Error('Sign in before joining a consultation.');
+        socket.disconnect();
+        socket.auth = { token };
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            socket.off('connect', onConnect);
+            socket.off('connect_error', onError);
+            reject(new Error('Could not connect to the secure call signaling server.'));
+          }, 15000);
+          const onConnect = () => {
+            clearTimeout(timeout);
+            socket.off('connect_error', onError);
+            resolve();
+          };
+          const onError = error => {
+            clearTimeout(timeout);
+            socket.off('connect', onConnect);
+            reject(new Error(error.message === 'unauthorized' ? 'Your call session is invalid. Sign in again.' : 'Could not verify the call session.'));
+          };
+          socket.once('connect', onConnect);
+          socket.once('connect_error', onError);
           socket.connect();
-          await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-              socket.off('connect', onConnect);
-              reject(new Error('Could not connect to the call signaling server.'));
-            }, 15000);
-            const onConnect = () => {
-              clearTimeout(timeout);
-              resolve();
-            };
-            socket.once('connect', onConnect);
-          });
-        }
+        });
         if (!mounted) return;
         setStatus('Waiting for the other participant to join...');
-        socket.emit('join_call', roomId);
+        socket.emit('join_call', { appointmentId }, result => {
+          if (result?.error) setError('This appointment is not assigned to your account.');
+        });
       } catch (mediaError) {
         setError(mediaError.message || 'Camera and microphone access is required for the in-app call. Check browser permissions and try again.');
         setStatus('Media access unavailable.');
@@ -219,12 +238,13 @@ export default function VideoCallPage() {
 
     return () => {
       mounted = false;
-      socket.emit('leave_call', roomId);
+      if (appointmentId) socket.emit('leave_call', appointmentId);
       socket.off('call_peer_joined', onPeerJoined);
       socket.off('call_room_peers', onRoomPeers);
       socket.off('webrtc_signal', onSignal);
       socket.off('call_peer_left', onPeerLeft);
       socket.off('call_recording_status', onRemoteRecording);
+      socket.disconnect();
       peersRef.current.forEach(peer => peer.close());
       peersRef.current.clear();
       localStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -285,7 +305,7 @@ export default function VideoCallPage() {
         const transcriptText = await transcribeAudioBlob(blob, setStatus);
         setStatus('Generating the clinical report from the conversation...');
         await axios.post(`${backendUrl}/api/ai/clinical-note`, {
-          roomUrl,
+          roomUrl: roomId,
           appointmentId,
           source: 'automatic_audio',
           transcript: [{ author: 'Consultation audio', message: transcriptText }],
@@ -302,7 +322,7 @@ export default function VideoCallPage() {
     });
     recorderRef.current.start();
     setRecording(true);
-    socket.emit('call_recording_status', { room: roomId, recording: true });
+    socket.emit('call_recording_status', { appointmentId, recording: true });
   };
 
   const stopRecording = () => {
@@ -310,7 +330,7 @@ export default function VideoCallPage() {
       recorderRef.current.stop();
     }
     setRecording(false);
-    socket.emit('call_recording_status', { room: roomId, recording: false });
+    socket.emit('call_recording_status', { appointmentId, recording: false });
     return reportCompletionRef.current;
   };
 
@@ -322,7 +342,7 @@ export default function VideoCallPage() {
     if (role === 'doctor') {
       if (recorderRef.current?.state === 'recording') stopRecording();
       await reportCompletionRef.current;
-      socket.emit('call_ended', { room: roomId, endedBy: displayName });
+      socket.emit('call_ended', { appointmentId, endedBy: displayName });
       if (appointmentId) {
         await axios.patch(`${backendUrl}/api/appointment/${encodeURIComponent(appointmentId)}/end-call`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('doctorSessionToken') || ''}` } }).catch(() => null);
       }

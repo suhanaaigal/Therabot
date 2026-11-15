@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import PatientSupportBanner from '../components/PatientSupportBanner';
 
 export default function TherabotAuthPage({ role }) {
   const isDoctor = role === 'doctor';
@@ -10,7 +11,7 @@ export default function TherabotAuthPage({ role }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [doctors, setDoctors] = useState([]);
-  const [form, setForm] = useState({ fullName: '', username: 'doctor', email: '', recoveryCode: '', doctorId: '', phoneNumber: '', age: '', gender: '', emergencyContact: '', password: isDoctor ? 'doctor123' : '' });
+  const [form, setForm] = useState({ fullName: '', username: 'doctor', email: '', recoveryCode: '', doctorId: '', phoneNumber: '', age: '', gender: '', emergencyContact: '', emergencyContactPhone: '', emergencyContactConsent: false, privacyConsent: false, password: '' });
 
   useEffect(() => {
     if (isDoctor) return;
@@ -64,6 +65,9 @@ export default function TherabotAuthPage({ role }) {
           gender: form.gender,
           phoneNumber: form.phoneNumber,
           emergencyContact: form.emergencyContact,
+          emergencyContactPhone: form.emergencyContactPhone,
+          emergencyContactConsent: form.emergencyContactConsent,
+          privacyConsent: form.privacyConsent,
           password: form.password
         })
         : await api.post('/api/auth/login', { email: form.email, password: form.password });
@@ -91,7 +95,7 @@ export default function TherabotAuthPage({ role }) {
         <div className="auth-aside-copy"><span className="hero-kicker">{isDoctor ? 'Connected care' : 'A space for you'}</span><h1>{isDoctor ? 'Care starts with a clearer picture.' : 'You can begin exactly where you are.'}</h1><p>{isDoctor ? 'Review patient wellbeing, coordinate appointments and keep consultation notes together.' : 'Check in with yourself, find support and keep your care journey in one thoughtful place.'}</p></div>
         <small className="auth-footnote">Therabot · thoughtful tools for mental wellbeing</small>
       </aside>
-      <section className="auth-form-side"><div className="auth-form-wrap">
+      <section className="auth-form-side">{!isDoctor && <PatientSupportBanner />}<div className="auth-form-wrap">
         <p className="page-eyebrow">{isDoctor ? 'Clinician workspace' : 'Patient space'}</p>
         <h2>{isDoctor ? 'Welcome back' : mode === 'new' ? 'Create your space' : mode === 'recover' ? 'Set a new password' : 'Welcome back'}</h2>
         <p>{isDoctor ? 'Sign in to review your care workspace.' : mode === 'new' ? 'A few details to get your wellbeing space ready.' : mode === 'recover' ? 'Enter the one-time recovery code provided by your care team.' : 'Sign in to continue your wellbeing journey.'}</p>
@@ -105,7 +109,18 @@ export default function TherabotAuthPage({ role }) {
           {!isDoctor && mode === 'new' && <>
             <div className="form-grid"><div className="form-field"><label htmlFor="patient-age">Age</label><input id="patient-age" type="number" min="1" max="120" placeholder="Age" value={form.age} onChange={event => setForm({ ...form, age: event.target.value })} required /></div><div className="form-field"><label htmlFor="patient-gender">Gender</label><select id="patient-gender" value={form.gender} onChange={event => setForm({ ...form, gender: event.target.value })} required><option value="">Select</option><option>Female</option><option>Male</option><option>Other</option><option>Prefer not to say</option></select></div></div>
             <div className="form-field"><label htmlFor="patient-phone">Phone number</label><input id="patient-phone" type="tel" autoComplete="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} title="Enter exactly 10 digits." placeholder="10-digit phone number" value={form.phoneNumber} onChange={event => setForm({ ...form, phoneNumber: event.target.value.replace(/\D/g, '').slice(0, 10) })} required /></div>
-            <div className="form-field"><label htmlFor="patient-emergency">Emergency contact</label><input id="patient-emergency" placeholder="Contact name or number" value={form.emergencyContact} onChange={event => setForm({ ...form, emergencyContact: event.target.value })} required /></div>
+            <label className="form-field" style={{ display: 'flex', alignItems: 'flex-start', gap: '9px' }}>
+              <input type="checkbox" checked={form.emergencyContactConsent} onChange={event => setForm({ ...form, emergencyContactConsent: event.target.checked, emergencyContact: event.target.checked ? form.emergencyContact : '', emergencyContactPhone: event.target.checked ? form.emergencyContactPhone : '' })} />
+              <span>I consent to provide an emergency contact and allow Therabot to queue a minimal SMS if configured. This is optional; the message does not include health details.</span>
+            </label>
+            {form.emergencyContactConsent && <>
+              <div className="form-field"><label htmlFor="patient-emergency">Emergency contact name</label><input id="patient-emergency" autoComplete="off" placeholder="Contact name" value={form.emergencyContact} onChange={event => setForm({ ...form, emergencyContact: event.target.value })} required /></div>
+              <div className="form-field"><label htmlFor="patient-emergency-phone">Emergency contact phone</label><input id="patient-emergency-phone" type="tel" inputMode="tel" autoComplete="off" placeholder="+911234567890" value={form.emergencyContactPhone} onChange={event => setForm({ ...form, emergencyContactPhone: event.target.value.replace(/[^\d+]/g, '') })} required /></div>
+            </>}
+            <label className="form-field" style={{ display: 'flex', alignItems: 'flex-start', gap: '9px' }}>
+              <input type="checkbox" checked={form.privacyConsent} onChange={event => setForm({ ...form, privacyConsent: event.target.checked })} required />
+              <span>I have read the <a href="/#/privacy" target="_blank" rel="noreferrer">privacy and consent notice</a>, including stored check-ins and any simulated wearable readings, AI processing, retention, and deletion.</span>
+            </label>
           </>}
           <div className="form-field"><label htmlFor="account-password">{mode === 'recover' ? 'New password' : 'Password'}</label><input id="account-password" type="password" minLength={!isDoctor && ['new', 'recover'].includes(mode) ? 8 : undefined} maxLength={128} autoComplete={mode === 'new' || mode === 'recover' ? 'new-password' : 'current-password'} placeholder={mode === 'recover' ? 'Choose a new password' : 'Enter password'} value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} required /></div>
           {error && <div className="auth-error" role="alert">{error}</div>}
@@ -114,7 +129,7 @@ export default function TherabotAuthPage({ role }) {
         </form>
         {!isDoctor && mode === 'existing' && <button className="auth-home-link forgot-link" type="button" onClick={() => { setMode('recover'); setError(''); setNotice(''); }}>I have a recovery code</button>}
         {!isDoctor && mode === 'recover' && <button className="auth-home-link forgot-link" type="button" onClick={() => { setMode('existing'); setError(''); setNotice(''); }}>Back to sign in</button>}
-        {isDoctor && <p className="demo-credentials">Demo access: <strong>doctor</strong> / <strong>doctor123</strong></p>}
+        {isDoctor && <p className="demo-credentials">Clinician accounts are provisioned by an administrator. Local demo setup requires the `DEMO_DOCTOR_PASSWORD` environment variable.</p>}
         <button className="auth-home-link" type="button" onClick={() => navigate('/')}>← Back to Therabot home</button>
       </div></section>
     </main>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api, backendUrl } from '../api';
 import io from 'socket.io-client';
 
-const socket = io.connect(backendUrl);
+const socket = io(backendUrl, { autoConnect: false });
 
 const quickPrompts = [
   'I feel overwhelmed today',
@@ -18,10 +18,10 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
   const [isTyping, setIsTyping] = useState(false);
   const [chatError, setChatError] = useState('');
   const [basicMode, setBasicMode] = useState(false);
+  const useCopingGuidance = false;
   const recognizerRef = useRef(null);
   const messageEndRef = useRef(null);
   const requestInFlightRef = useRef(false);
-  const [failedRequest, setFailedRequest] = useState(null);
   const [messageList, setMessageList] = useState([
     {
       author: 'AI Companion',
@@ -55,17 +55,47 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
 
   useEffect(() => {
     if (mode === 'live') {
-      socket.emit('join_room', roomId);
+      const token = localStorage.getItem('doctorSessionToken') || localStorage.getItem('patientSessionToken');
+      socket.auth = { token };
+      socket.connect();
 
-      socket.on('receive_message', (data) => {
+      const onReceiveMessage = data => {
         setMessageList((list) => [...list, data]);
+      };
+      const onConnectionError = () => setChatError('Your secure chat session could not be verified. Sign in again.');
+      socket.on('receive_message', onReceiveMessage);
+      socket.on('connect_error', onConnectionError);
+      socket.emit('join_room', roomId, result => {
+        if (result?.error) setChatError('You do not have access to this patient chat.');
       });
 
       return () => {
-        socket.off('receive_message');
+        socket.off('receive_message', onReceiveMessage);
+        socket.off('connect_error', onConnectionError);
+        socket.disconnect();
       };
     }
   }, [roomId, mode]);
+
+  useEffect(() => {
+    if (mode !== 'ai') return undefined;
+    let active = true;
+    api.get('/api/ai/history')
+      .then(response => {
+        if (!active) return;
+        const history = (response.data || []).map(item => ({
+          author: item.author,
+          message: item.message,
+          time: item.time || new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isAi: item.author === 'AI Companion'
+        }));
+        if (history.length) setMessageList(history);
+      })
+      .catch(error => {
+        if (active) setChatError(error?.response?.data?.error || 'Could not load your saved conversation.');
+      });
+    return () => { active = false; };
+  }, [mode]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -106,10 +136,10 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
       role: item.author === senderName ? 'user' : 'assistant',
       content: item.message
     }));
-    await requestAiReply(textToSend, conversationHistory);
+    await requestAiReply(textToSend, conversationHistory, useCopingGuidance);
   };
 
-  const requestAiReply = async (textToSend, conversationHistory) => {
+  const requestAiReply = async (textToSend, conversationHistory, includeGrounding = useCopingGuidance) => {
     if (requestInFlightRef.current) return;
     requestInFlightRef.current = true;
     setIsTyping(true);
@@ -118,18 +148,18 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
     try {
       const res = await api.post('/api/ai/chat', {
         message: textToSend,
-        history: conversationHistory
+        history: conversationHistory,
+        useGrounding: includeGrounding
       });
       setBasicMode(res.data.provider === 'basic-fallback');
-      setFailedRequest(null);
       setMessageList((list) => [...list, {
         author: 'AI Companion',
         message: res.data.reply,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isAi: true
+        isAi: true,
+        groundingUsed: res.data.groundingUsed === true
       }]);
     } catch (error) {
-      setFailedRequest({ message: textToSend, history: conversationHistory });
       setChatError(error?.response?.data?.error || 'The companion could not reply. Your message is still here; please try again.');
     } finally {
       requestInFlightRef.current = false;
@@ -185,7 +215,7 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
 
       <div aria-live="polite" aria-relevant="additions" style={{ height: '360px', overflowY: 'auto', padding: '18px', background: '#f7f9ff' }}>
         {messageList.map((content, index) => {
-          const isMine = content.author === senderName;
+          const isMine = content.author === senderName || (mode === 'ai' && content.author === 'Patient');
           const isAi = content.isAi || content.author === 'AI Companion';
 
           return (
@@ -205,6 +235,7 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
                 }}>
                   {content.message}
                 </div>
+                {content.groundingUsed && <small style={{ display: 'block', marginTop: '4px', color: '#64748b' }}>Includes optional general coping ideas</small>}
               </div>
             </div>
           );
@@ -227,15 +258,10 @@ export default function ChatRoom({ roomId, senderName, mode = 'live' }) {
         <div ref={messageEndRef} />
       </div>
 
-      {chatError && failedRequest && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 18px 12px', background: '#fff' }}>
-          <button type="button" className="quiet-button" disabled={isTyping} onClick={() => requestAiReply(failedRequest.message, failedRequest.history)}>Retry response</button>
-        </div>
-      )}
-
       <form onSubmit={(event) => { event.preventDefault(); sendMessage(); }} style={{ display: 'flex', gap: '10px', padding: '14px 18px 18px', background: '#ffffff' }}>
         <input
           type="text"
+          maxLength={1000}
           value={message}
           placeholder={mode === 'live' ? 'Type a message...' : 'Share how you are feeling today...'}
           onChange={(e) => setMessage(e.target.value)}

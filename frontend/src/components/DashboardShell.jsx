@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import PatientSupportBanner from './PatientSupportBanner';
 
 export default function DashboardShell({ role, name, active, onNavigate, items, children }) {
   const navigate = useNavigate();
@@ -140,6 +141,7 @@ export default function DashboardShell({ role, name, active, onNavigate, items, 
           <div className="topbar-context"><span className="topbar-kicker">{role} workspace</span><span className="topbar-date">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span></div>
           {role === 'Patient' ? profileContent : <div className="topbar-profile"><span className="avatar-badge">{initials || 'T'}</span><span className="profile-name">{name}</span></div>}
         </header>
+        {role === 'Patient' && <PatientSupportBanner />}
         <div className="workspace-content">{children}</div>
       </main>
     </div>

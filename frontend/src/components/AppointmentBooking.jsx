@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
+import { appointmentTimestamp, scheduledAtFromKolkataInput } from '../utils/appointmentTime';
 
 const isAppointmentLive = (scheduledDate, scheduledTime, callEnded = false) => {
   if (callEnded) return false;
-  const appointmentDate = new Date(`${scheduledDate}T${scheduledTime}`);
-  if (Number.isNaN(appointmentDate.getTime())) return false;
+  const appointmentTime = new Date(scheduledAtFromKolkataInput(scheduledDate, scheduledTime) || '').getTime();
+  if (!Number.isFinite(appointmentTime)) return false;
   const now = Date.now();
-  return now >= appointmentDate.getTime() - (2 * 60 * 1000) && now <= appointmentDate.getTime() + 60 * 60 * 1000;
+  return now >= appointmentTime - (2 * 60 * 1000) && now <= appointmentTime + 60 * 60 * 1000;
 };
 
 const isPriorityAppointment = urgency => ['Urgent', 'Emergency'].includes(urgency);
 
 const getAppointmentCountdown = (scheduledDate, scheduledTime, currentTime) => {
-  const appointmentTime = new Date(`${scheduledDate}T${scheduledTime}`).getTime();
+  const appointmentTime = new Date(scheduledAtFromKolkataInput(scheduledDate, scheduledTime) || '').getTime();
   if (!Number.isFinite(appointmentTime)) return '';
   const difference = appointmentTime - currentTime;
   if (difference <= 0 && difference > -(60 * 60 * 1000)) return 'Your consultation window is open.';
@@ -40,7 +41,6 @@ export default function AppointmentBooking({ patientName }) {
   const [slotStatus, setSlotStatus] = useState(null);
   const [myAppointments, setMyAppointments] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [showHistory, setShowHistory] = useState(false);
   const patientId = localStorage.getItem('patientId') || 'demo-patient-id';
 
   useEffect(() => {
@@ -106,7 +106,8 @@ export default function AppointmentBooking({ patientName }) {
       });
       setSlotStatus(res.data);
     } catch (err) {
-      setSlotStatus({ available: false, conflict: { patientName: 'Doctor' } });
+      console.error('Appointment availability check failed', err);
+      setSlotStatus({ available: false, checkFailed: true });
     }
   };
 
@@ -115,6 +116,10 @@ export default function AppointmentBooking({ patientName }) {
 
     if (!date || !time) {
       alert('Please select a date and time.');
+      return;
+    }
+    if (slotStatus?.checkFailed) {
+      alert('Could not verify appointment availability. Please try again.');
       return;
     }
     if (slotStatus && !slotStatus.available && !isPriorityAppointment(urgency)) {
@@ -127,13 +132,17 @@ export default function AppointmentBooking({ patientName }) {
     if (!currentDoctorId) {
       try {
         const fallbackDoctor = await api.get('/api/appointment/doctors');
-        const fallbackId = fallbackDoctor?.data?.[0]?._id || 'doctor-default';
+        const fallbackId = fallbackDoctor?.data?.[0]?._id;
+        if (!fallbackId) {
+          alert('No clinician is available for appointments right now.');
+          return;
+        }
         currentDoctorId = fallbackId;
         setDoctorId(fallbackId);
       } catch (err) {
-        const fallbackId = 'doctor-default';
-        currentDoctorId = fallbackId;
-        setDoctorId(fallbackId);
+        console.error('Could not load a clinician for appointment booking', err);
+        alert(err?.response?.data?.error || 'Could not load clinicians. Please try again.');
+        return;
       }
     }
 
@@ -145,6 +154,7 @@ export default function AppointmentBooking({ patientName }) {
         doctorName: localStorage.getItem('doctorName') || 'Doctor',
         scheduledDate: date,
         scheduledTime: time,
+        scheduledAt: scheduledAtFromKolkataInput(date, time),
         urgency
       });
 
@@ -164,11 +174,10 @@ export default function AppointmentBooking({ patientName }) {
 
   const isCurrentAppointment = appointment => {
     if (!['Pending', 'Approved'].includes(appointment.status) || appointment.callEnded) return false;
-    const appointmentDate = new Date(`${appointment.scheduledDate}T${appointment.scheduledTime}`).getTime();
+    const appointmentDate = appointmentTimestamp(appointment);
     return appointment.status === 'Pending' || !Number.isFinite(appointmentDate) || appointmentDate + (60 * 60 * 1000) >= now;
   };
   const currentAppointments = myAppointments.filter(isCurrentAppointment);
-  const appointmentHistory = myAppointments.filter(appointment => !isCurrentAppointment(appointment));
   const visibleNotifications = notifications
     .filter(notification => notification?.message)
     .filter(notification => isNotificationRelevant(notification, now))
@@ -200,21 +209,23 @@ export default function AppointmentBooking({ patientName }) {
 
         {slotStatus && (
           <div role="status" style={{ marginBottom: '12px', padding: '9px 10px', borderRadius: '6px', background: slotStatus.available ? '#ecfdf5' : '#fff1f2', border: `1px solid ${slotStatus.available ? '#a7f3d0' : '#fecdd3'}`, color: slotStatus.available ? '#166534' : '#9f1239', fontSize: '13px' }}>
-            {slotStatus.available ? 'This time is available.' : 'This time is already booked. Please choose another time.'}
+            {slotStatus.checkFailed
+              ? 'Availability could not be checked. Please try again.'
+              : slotStatus.available ? 'This time is available.' : 'This time is already booked. Please choose another time.'}
           </div>
         )}
 
         <button
           type="submit"
-          disabled={Boolean(slotStatus && !slotStatus.available && !isPriorityAppointment(urgency))}
+          disabled={Boolean(slotStatus?.checkFailed || (slotStatus && !slotStatus.available && !isPriorityAppointment(urgency)))}
           style={{
             width: '100%',
             padding: '10px',
-            background: slotStatus && !slotStatus.available && !isPriorityAppointment(urgency) ? '#94a3b8' : '#007bff',
+            background: slotStatus?.checkFailed || (slotStatus && !slotStatus.available && !isPriorityAppointment(urgency)) ? '#94a3b8' : '#007bff',
             color: '#fff',
             border: 'none',
             borderRadius: '4px',
-            cursor: slotStatus && !slotStatus.available && !isPriorityAppointment(urgency) ? 'not-allowed' : 'pointer'
+            cursor: slotStatus?.checkFailed || (slotStatus && !slotStatus.available && !isPriorityAppointment(urgency)) ? 'not-allowed' : 'pointer'
           }}
         >
           Request Appointment
@@ -228,7 +239,7 @@ export default function AppointmentBooking({ patientName }) {
         ) : (
           currentAppointments.map(app => (
             <li key={app._id} style={{ marginBottom: '18px' }}>
-              <div><strong>{app.doctorName || 'Doctor'}</strong> — {app.scheduledDate} at {app.scheduledTime}</div>
+              <div><strong>{app.doctorName || 'Doctor'}</strong> — {new Date(appointmentTimestamp(app)).toLocaleString(undefined, { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' })}</div>
               <div style={{ fontSize: '13px', color: '#475569' }}>Status: {app.status}</div>
               {app.status === 'Approved' && !app.callEnded && getAppointmentCountdown(app.scheduledDate, app.scheduledTime, now) && (
                 <div style={{ marginTop: '6px', color: '#0f766e', fontSize: '13px', fontWeight: '700' }}>{getAppointmentCountdown(app.scheduledDate, app.scheduledTime, now)}</div>
@@ -269,24 +280,6 @@ export default function AppointmentBooking({ patientName }) {
           ))
         )}
       </ul>
-
-      {appointmentHistory.length > 0 && (
-        <div style={{ marginTop: '18px', borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
-          <button type="button" onClick={() => setShowHistory(value => !value)} style={{ border: 0, padding: 0, background: 'transparent', color: '#475569', cursor: 'pointer', fontWeight: '700' }}>
-            {showHistory ? 'Hide consultation history' : `Show consultation history (${appointmentHistory.length})`}
-          </button>
-          {showHistory && (
-            <ul style={{ paddingLeft: '20px', marginBottom: 0 }}>
-              {appointmentHistory.map(app => (
-                <li key={app._id} style={{ marginTop: '12px', color: '#475569' }}>
-                  <div><strong>{app.doctorName || 'Doctor'}</strong> — {app.scheduledDate} at {app.scheduledTime}</div>
-                  <div style={{ fontSize: '13px' }}>Status: {app.callEnded ? 'Completed' : app.status}</div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
 
       <div style={{ marginTop: '12px', fontSize: '13px', color: '#475569' }}>
         Only the assigned doctor and patient can access the Jitsi room for this consultation.

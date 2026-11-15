@@ -4,7 +4,7 @@ import { api } from '../api';
 
 export default function DoctorAuthPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ username: 'doctor', password: 'doctor123' });
+  const [form, setForm] = useState({ username: 'doctor', password: '' });
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e) => {
@@ -72,7 +72,7 @@ export default function DoctorAuthPage() {
         </form>
 
         <div style={{ marginTop: '18px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 12px', color: '#334155' }}>
-          Demo doctor account: <strong>doctor</strong> / <strong>doctor123</strong>
+          Clinician accounts are provisioned by an administrator. Local demo setup requires the <code>DEMO_DOCTOR_PASSWORD</code> environment variable.
         </div>
       </div>
     </div>

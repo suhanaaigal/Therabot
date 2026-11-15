@@ -203,12 +203,6 @@ function FeatureCard({ title, description, action, color }) {
   );
 }
 
-const pageGridStyle = {
-  display: 'grid',
-  gridTemplateColumns: '1.1fr 0.9fr',
-  gap: '20px'
-};
-
 const cardStyle = {
   background: '#fff',
   borderRadius: '20px',

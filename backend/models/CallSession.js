@@ -5,8 +5,9 @@ const callSessionSchema = new mongoose.Schema({
   patientName: { type: String, required: true },
   doctorName: { type: String, default: 'Doctor' },
   roomUrl: { type: String, required: true },
-  scheduledDate: { type: String, required: true },
-  scheduledTime: { type: String, required: true },
+  scheduledAt: { type: Date },
+  scheduledDate: { type: String },
+  scheduledTime: { type: String },
   transcript: [{
     author: { type: String, required: true },
     message: { type: String, required: true },

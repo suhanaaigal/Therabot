@@ -23,87 +23,26 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
-const CallSession = require('./models/CallSession');
 const Patient = require('./models/Patient');
 const Appointment = require('./models/Appointment');
 const Doctor = require('./models/Doctor');
-const { demoCallSessions } = require('./demoStore');
+const { demoAppointments, demoPatients, seedDemoPatients } = require('./demoStore');
+const { verifyPatientSession } = require('./patientSession');
+const { verifyDoctorSession } = require('./doctorSession');
+const { createRateLimiter } = require('./middleware/rateLimit');
+const { hashPatientPassword } = require('./patientPassword');
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json());
 app.use(cors({ origin: process.env.FRONTEND_URL || true }));
+app.use('/api/auth', createRateLimiter({ windowMs: 15 * 60 * 1000, max: 20 }));
+app.use('/api/ai', createRateLimiter({ windowMs: 60 * 1000, max: 20 }));
+app.use('/api/appointment', createRateLimiter({ windowMs: 60 * 1000, max: 60 }));
 
 const isMongoConfigured = Boolean(process.env.MONGO_URI && process.env.MONGO_URI.startsWith('mongodb'));
 const isProduction = process.env.NODE_ENV === 'production';
-
-const normalizeTranscriptEntry = (item = {}) => {
-  if (!item || typeof item !== 'object') return null;
-  const author = String(item.author || 'Patient');
-  const message = String(item.message || '').replace(/\s+/g, ' ').trim();
-  if (!message) return null;
-
-  return {
-    author,
-    message,
-    time: item.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  };
-};
-
-const generateSessionSummary = (transcript = []) => {
-  const normalizedTranscript = (Array.isArray(transcript) ? transcript : [])
-    .map(normalizeTranscriptEntry)
-    .filter(Boolean);
-
-  if (!normalizedTranscript.length) {
-    return 'No transcript captured yet.';
-  }
-
-  const recentMessages = normalizedTranscript.slice(-10).map(item => item.message);
-  const patientMessages = normalizedTranscript.filter(item => /patient/i.test(item.author || '')).map(item => item.message);
-  const doctorMessages = normalizedTranscript.filter(item => /doctor/i.test(item.author || '')).map(item => item.message);
-
-  const concernKeywords = ['stress', 'anxiety', 'sleep', 'mood', 'fear', 'relapse', 'burnout', 'overwhelmed', 'panic', 'sad', 'work', 'family', 'relationship', 'depressed', 'lonely'];
-  const matchedConcerns = concernKeywords.filter(keyword => recentMessages.join(' ').toLowerCase().includes(keyword));
-
-  const patientLead = patientMessages.length ? patientMessages.slice(-2).join(' ') : recentMessages.slice(-2).join(' ');
-  const doctorLead = doctorMessages.length ? doctorMessages.slice(-2).join(' ') : 'Supportive follow-up and coping guidance were discussed.';
-
-  if (matchedConcerns.length) {
-    return `The patient discussed ${matchedConcerns.slice(0, 3).join(', ')} while sharing current concerns. The doctor responded with supportive guidance and follow-up planning based on the conversation: "${patientLead.slice(0, 180)}". ${doctorLead.slice(0, 180)}`;
-  }
-
-  return `During this consultation, the patient shared their current emotional and practical concerns, and the clinician responded with supportive guidance and next-step planning. Key discussion points included: "${patientLead.slice(0, 180)}". Follow-up guidance: "${doctorLead.slice(0, 180)}"`;
-};
-
-const persistCallTranscript = async (roomKey, entry) => {
-  if (!roomKey || !entry || !entry.message) return;
-
-  const nextEntry = normalizeTranscriptEntry(entry);
-  if (!nextEntry) return;
-
-  if (mongoose.connection.readyState === 1) {
-    const session = await CallSession.findOne({ roomUrl: roomKey });
-    if (!session) return;
-
-    const transcript = Array.isArray(session.transcript) ? session.transcript : [];
-    const updatedTranscript = [...transcript, nextEntry];
-    session.transcript = updatedTranscript;
-    session.summary = generateSessionSummary(updatedTranscript);
-    session.isRecorded = updatedTranscript.length > 0;
-    await session.save();
-    return;
-  }
-
-  const session = demoCallSessions.find(item => String(item.roomUrl) === String(roomKey));
-  if (!session) return;
-
-  const transcript = Array.isArray(session.transcript) ? session.transcript : [];
-  const updatedTranscript = [...transcript, nextEntry];
-  session.transcript = updatedTranscript;
-  session.summary = generateSessionSummary(updatedTranscript);
-  session.isRecorded = updatedTranscript.length > 0;
-};
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -116,6 +55,36 @@ app.get('/health', (_req, res) => {
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? 'ok' : 'database_unavailable',
     persistence: databaseConnected ? 'mongodb' : 'demo-memory'
+  });
+});
+
+app.get('/api/privacy', (_req, res) => {
+  const provider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
+  let providerName = provider === 'ollama' ? 'Ollama (local)' : 'OpenAI';
+  if (provider !== 'ollama') {
+    try {
+      const host = new URL(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').hostname.toLowerCase();
+      if (host.includes('groq')) providerName = 'Groq';
+      else if (host.includes('openai')) providerName = 'OpenAI';
+      else providerName = host;
+    } catch {
+      providerName = 'the configured AI provider';
+    }
+  }
+  let textAnalysisService = 'not_configured';
+  if (String(process.env.ML_URL || '').trim()) {
+    try {
+      textAnalysisService = new URL(process.env.ML_URL).hostname || 'configured service';
+    } catch (error) {
+      console.error('Configured ML_URL could not be identified for the privacy page:', error.message);
+      textAnalysisService = 'configured service (hostname unavailable)';
+    }
+  }
+  res.status(200).json({
+    aiProvider: providerName,
+    textAnalysisService,
+    privacyVersion: '2026-11-04',
+    persistence: mongoose.connection.readyState === 1 ? 'mongodb' : 'demo-memory'
   });
 });
 
@@ -132,64 +101,140 @@ app.use('/api/patient', require('./routes/patient'));
 app.use('/api/doctor', require('./routes/doctor'));
 app.use('/api/appointment', require('./routes/appointment'));
 app.use('/api/ai', require('./routes/ai'));
+app.use('/api/stress', require('./routes/stress'));
 
-// Socket.io Real-Time Connection
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  const patient = verifyPatientSession(token);
+  const doctor = patient ? null : verifyDoctorSession(token);
+  if (!patient && !doctor) return next(new Error('unauthorized'));
+  socket.data.user = patient
+    ? { role: 'patient', id: patient.patientId }
+    : { role: 'doctor', id: doctor.doctorId };
+  return next();
+});
+
+const findSocketAppointment = async appointmentId => {
+  if (mongoose.connection.readyState === 1) return Appointment.findById(appointmentId);
+  return demoAppointments.find(item => String(item._id) === String(appointmentId)) || null;
+};
+
+const socketUserCanAccessAppointment = async (user, appointment) => {
+  if (!appointment) return false;
+  if (mongoose.connection.readyState === 1) {
+    const patient = await Patient.findOne({ _id: appointment.patientId }).select('assignedDoctorId');
+    if (!patient) return false;
+    if (user.role === 'patient') return String(appointment.patientId) === user.id;
+    return String(appointment.doctorId) === user.id && String(patient.assignedDoctorId) === user.id;
+  }
+  const patient = [...demoPatients.values()].find(item => String(item._id) === String(appointment.patientId));
+  if (!patient) return false;
+  if (user.role === 'patient') return String(appointment.patientId) === user.id;
+  if (String(appointment.doctorId) !== user.id) return false;
+  return [...demoPatients.values()].some(patient =>
+    String(patient._id) === String(appointment.patientId) &&
+    String(patient.assignedDoctorId || 'doctor-default') === user.id
+  );
+};
+
+const canJoinPatientChat = async (user, patientId) => {
+  if (mongoose.connection.readyState === 1) {
+    const patient = await Patient.findById(patientId).select('assignedDoctorId');
+    if (!patient) return false;
+    return user.role === 'patient'
+      ? patientId === user.id
+      : String(patient.assignedDoctorId) === user.id;
+  }
+  if (user.role === 'patient') return patientId === user.id && demoPatients.has(patientId);
+  return [...demoPatients.values()].some(patient =>
+    String(patient._id) === patientId && String(patient.assignedDoctorId || 'doctor-default') === user.id
+  );
+};
+
+// Socket.io real-time connection. Rooms are derived from authorized records, not client-provided names.
 io.on('connection', (socket) => {
-  console.log(`User Connected: ${socket.id}`);
-
-  socket.on('join_room', (room) => {
-    socket.join(room);
-    console.log(`User joined room: ${room}`);
+  socket.on('join_room', async (patientId, acknowledge) => {
+    try {
+      const roomId = String(patientId || '');
+      if (!roomId || roomId.length > 100 || !await canJoinPatientChat(socket.data.user, roomId)) {
+        acknowledge?.({ error: 'forbidden' });
+        return;
+      }
+      const room = `patient-chat:${roomId}`;
+      socket.data.chatRoom = room;
+      socket.join(room);
+      acknowledge?.({ ok: true });
+    } catch (error) {
+      console.error('Socket patient chat authorization failed:', error.message);
+      acknowledge?.({ error: 'unavailable' });
+    }
   });
 
-  socket.on('join_call', (room) => {
-    if (!room) return;
-    const participants = [...(io.sockets.adapter.rooms.get(room) || [])]
-      .filter(peerId => peerId !== socket.id);
-    socket.join(room);
-    socket.emit('call_room_peers', { peerIds: participants });
-    socket.to(room).emit('call_peer_joined', { peerId: socket.id });
+  socket.on('join_call', async (payload, acknowledge) => {
+    try {
+      const appointmentId = payload?.appointmentId;
+      if (!appointmentId || String(appointmentId).length > 100) return acknowledge?.({ error: 'forbidden' });
+      const appointment = await findSocketAppointment(appointmentId);
+      if (!await socketUserCanAccessAppointment(socket.data.user, appointment)) {
+        acknowledge?.({ error: 'forbidden' });
+        return;
+      }
+      const room = `appointment:${appointmentId}`;
+      socket.data.callRooms ||= new Set();
+      socket.data.callRooms.add(room);
+      const participants = [...(io.sockets.adapter.rooms.get(room) || [])]
+        .filter(peerId => peerId !== socket.id);
+      socket.join(room);
+      socket.emit('call_room_peers', { appointmentId, peerIds: participants });
+      socket.to(room).emit('call_peer_joined', { appointmentId, peerId: socket.id });
+      acknowledge?.({ ok: true });
+    } catch (error) {
+      console.error('Socket appointment authorization failed:', error.message);
+      acknowledge?.({ error: 'unavailable' });
+    }
   });
 
-  socket.on('webrtc_signal', ({ to, signal } = {}) => {
-    if (!to || !signal) return;
-    io.to(to).emit('webrtc_signal', { from: socket.id, signal });
+  socket.on('webrtc_signal', payload => {
+    const { appointmentId, to, signal } = payload || {};
+    const room = `appointment:${appointmentId}`;
+    if (!to || !signal || !socket.rooms.has(room) || !io.sockets.adapter.rooms.get(room)?.has(to)) return;
+    io.to(to).emit('webrtc_signal', { from: socket.id, appointmentId, signal });
   });
 
-  socket.on('call_recording_status', ({ room, recording } = {}) => {
-    if (!room) return;
-    socket.to(room).emit('call_recording_status', { recording: Boolean(recording) });
+  socket.on('call_recording_status', payload => {
+    const { appointmentId, recording } = payload || {};
+    const room = `appointment:${appointmentId}`;
+    if (!socket.rooms.has(room)) return;
+    socket.to(room).emit('call_recording_status', { appointmentId, recording: Boolean(recording) });
   });
 
-  socket.on('call_ended', ({ room, endedBy } = {}) => {
-    if (!room) return;
-    socket.to(room).emit('call_ended', { endedBy: endedBy || 'Doctor' });
+  socket.on('call_ended', payload => {
+    const { appointmentId, endedBy } = payload || {};
+    const room = `appointment:${appointmentId}`;
+    if (!socket.rooms.has(room)) return;
+    socket.to(room).emit('call_ended', { appointmentId, endedBy: endedBy || 'Doctor' });
   });
 
-  socket.on('leave_call', (room) => {
-    if (!room) return;
+  socket.on('leave_call', appointmentId => {
+    const room = `appointment:${appointmentId}`;
+    if (!appointmentId || !socket.rooms.has(room)) return;
     socket.leave(room);
+    socket.data.callRooms?.delete(room);
     socket.to(room).emit('call_peer_left', { peerId: socket.id });
   });
 
   socket.on('send_message', async (data) => {
-    const room = data?.room || data?.roomUrl || data?.roomId;
+    const room = socket.data.chatRoom;
+    if (!room) return;
     const entry = {
-      author: data?.author || 'Patient',
-      message: String(data?.message || '').trim(),
+      author: socket.data.user.role === 'doctor' ? 'Doctor' : 'Patient',
+      message: String(data?.message || '').trim().slice(0, 2000),
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-
-    if (room && entry.message) {
-      await persistCallTranscript(room, entry);
-    }
-
-    io.to(room).emit('receive_message', data);
+    if (entry.message) socket.to(room).emit('receive_message', entry);
   });
 
-  socket.on('disconnect', () => {
-    console.log(`User Disconnected: ${socket.id}`);
-  });
+  socket.on('disconnect', () => {});
 });
 
 // Local development can use demo mode; production must never accept ephemeral data.
@@ -204,13 +249,14 @@ const migrateLegacyPatientAssignments = async () => {
   if (!unassignedPatients.length) return;
 
   let defaultDoctor = await Doctor.findOne().sort({ createdAt: 1 }).select('_id');
-  if (!defaultDoctor) {
+  if (!defaultDoctor && process.env.NODE_ENV !== 'production' && process.env.DEMO_DOCTOR_PASSWORD) {
     defaultDoctor = await Doctor.findOneAndUpdate(
       { username: 'doctor' },
-      { username: 'doctor', password: 'doctor123', fullName: 'Dr. Suhana Aigal', specialty: 'Mental Wellness' },
+      { username: 'doctor', password: await hashPatientPassword(process.env.DEMO_DOCTOR_PASSWORD), fullName: 'Dr. Suhana Aigal', specialty: 'Mental Wellness' },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     ).select('_id');
   }
+  if (!defaultDoctor) throw new Error('Unassigned patient records exist, but no clinician is provisioned. Assign them through the trusted administrative process.');
 
   const patientIds = unassignedPatients.map(patient => String(patient._id));
   const historicalAppointments = await Appointment.find({
@@ -250,10 +296,11 @@ const startServer = async () => {
           console.log('MongoDB Connected Successfully');
           await migrateLegacyPatientAssignments();
         })
-        .catch(err => console.warn('MongoDB unavailable; local development is using demo storage:', err.message));
+        .catch(err => console.warn('Local MongoDB initialization failed; check the database and clinician provisioning:', err.message));
     }
   } else {
     console.warn('MongoDB not configured. Running in non-persistent local demo mode.');
+    await seedDemoPatients();
   }
 
   server.listen(PORT, () => {

@@ -3,10 +3,29 @@ const mongoose = require('mongoose');
 const crypto = require('node:crypto');
 const { signDoctorSession } = require('../doctorSession');
 const { hashPatientPassword, verifyPatientPassword } = require('../patientPassword');
-const { signPatientSession } = require('../patientSession');
+const { signPatientSession, requirePatientSession } = require('../patientSession');
 const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
-const { demoPatients, demoDoctors, ensureDefaultDoctor } = require('../demoStore');
+const {
+  demoPatients,
+  demoDoctors,
+  ensureDefaultDoctor,
+  demoCheckIns,
+  demoAppointments,
+  demoCallSessions,
+  demoNotifications,
+  demoStressReadings,
+  demoQuestionnaires,
+  demoChatMessages
+} = require('../demoStore');
+const DailyCheckIn = require('../models/DailyCheckIn');
+const Appointment = require('../models/Appointment');
+const CallSession = require('../models/CallSession');
+const Notification = require('../models/Notification');
+const ChatMessage = require('../models/ChatMessage');
+const StressReading = require('../models/StressReading');
+const Questionnaire = require('../models/Questionnaire');
+const { stopReplayForPatient } = require('../services/stressReplay');
 
 const normalizeEmail = email => String(email || '').trim().toLowerCase();
 const findDemoPatientByEmail = email => [...demoPatients.values()].find(patient => normalizeEmail(patient.email) === email);
@@ -31,7 +50,10 @@ const savePatient = async patient => {
 
 router.post('/register-simple', async (req, res) => {
   try {
-    const { fullName, email: submittedEmail, age, gender, phoneNumber, emergencyContact, doctorId, password } = req.body || {};
+    const { fullName, email: submittedEmail, age, gender, phoneNumber, emergencyContact, emergencyContactPhone, emergencyContactConsent, privacyConsent, doctorId, password } = req.body || {};
+    if (typeof fullName !== 'string' || typeof submittedEmail !== 'string' || typeof gender !== 'string' || typeof phoneNumber !== 'string' || typeof doctorId !== 'string') {
+      return res.status(400).json({ error: 'Complete the required account fields with valid values.' });
+    }
     const email = normalizeEmail(submittedEmail);
     const patientAge = Number(age);
 
@@ -47,11 +69,17 @@ router.post('/register-simple', async (req, res) => {
     if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
       return res.status(400).json({ error: 'Choose a password between 8 and 128 characters.' });
     }
+    if (privacyConsent !== true) return res.status(400).json({ error: 'Consent to the privacy notice is required to create an account.' });
+    if (emergencyContactConsent === true &&
+        (typeof emergencyContact !== 'string' || !emergencyContact.trim() || emergencyContact.length > 120 ||
+          typeof emergencyContactPhone !== 'string' || !/^\+[1-9]\d{7,14}$/.test(emergencyContactPhone.trim()))) {
+      return res.status(400).json({ error: 'Enter an emergency contact name and phone in international format, including country code.' });
+    }
     if (!doctorId) return res.status(400).json({ error: 'Choose a doctor for your care team.' });
 
     const assignedDoctor = mongoose.connection.readyState === 1
       ? await Doctor.findById(doctorId).select('_id')
-      : demoDoctors.get(String(doctorId)) || (String(doctorId) === 'doctor-default' ? ensureDefaultDoctor() : null);
+      : demoDoctors.get(String(doctorId)) || (String(doctorId) === 'doctor-default' ? await ensureDefaultDoctor() : null);
     if (!assignedDoctor) return res.status(400).json({ error: 'The selected doctor is unavailable. Please choose another.' });
 
     const existingPatient = await findPatientByEmail(email);
@@ -69,7 +97,11 @@ router.post('/register-simple', async (req, res) => {
       age: patientAge,
       gender: String(gender).trim(),
       phoneNumber: String(phoneNumber).trim(),
-      emergencyContact: String(emergencyContact || '').trim(),
+      emergencyContact: emergencyContactConsent === true ? String(emergencyContact || '').trim() : '',
+      emergencyContactPhone: emergencyContactConsent === true ? String(emergencyContactPhone || '').trim() : '',
+      emergencyContactConsent: emergencyContactConsent === true,
+      privacyConsentAt: new Date(),
+      privacyConsentVersion: '2026-11-04',
       password: await hashPatientPassword(password)
     });
     await savePatient(patient);
@@ -189,11 +221,28 @@ router.post('/doctor-login', async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const doctor = await Doctor.findOne({ username }).catch(() => null);
+    let doctor = await Doctor.findOne({ username }).catch(() => null);
+
+    if (!doctor && mongoose.connection.readyState !== 1 && username === 'doctor') {
+      doctor = await ensureDefaultDoctor();
+    }
+    if (!doctor && mongoose.connection.readyState === 1 && process.env.NODE_ENV !== 'production' && username === 'doctor' && process.env.DEMO_DOCTOR_PASSWORD) {
+      const passwordHash = await hashPatientPassword(process.env.DEMO_DOCTOR_PASSWORD);
+      doctor = await Doctor.findOneAndUpdate(
+        { username: 'doctor' },
+        { username: 'doctor', password: passwordHash, fullName: 'Dr. Suhana Aigal', specialty: 'Mental Wellness' },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+    }
 
     if (doctor) {
-      if (doctor.password !== password) {
+      const passwordResult = await verifyPatientPassword(password, doctor.password);
+      if (!passwordResult.isValid) {
         return res.status(401).json({ error: 'Incorrect password' });
+      }
+      if (passwordResult.needsRehash) {
+        doctor.password = await hashPatientPassword(password);
+        await doctor.save();
       }
 
       if (doctor.username === 'doctor' && doctor.fullName !== 'Dr. Suhana Aigal') {
@@ -210,24 +259,13 @@ router.post('/doctor-login', async (req, res) => {
       });
     }
 
-    if (mongoose.connection.readyState === 1 && username === 'doctor' && password === 'doctor123') {
-      const persistentDoctor = await Doctor.findOneAndUpdate(
-        { username: 'doctor' },
-        { username: 'doctor', password: 'doctor123', fullName: 'Dr. Suhana Aigal', specialty: 'Mental Wellness' },
-        { new: true, upsert: true, setDefaultsOnInsert: true }
-      );
-      return res.status(200).json({
-        message: 'Doctor login successful',
-        doctorName: 'Dr. Suhana Aigal',
-        username: persistentDoctor.username,
-        doctorId: String(persistentDoctor._id),
-        doctorSessionToken: signDoctorSession(persistentDoctor._id)
-      });
-    }
-
-    const defaultDoctor = ensureDefaultDoctor();
-    if (username === defaultDoctor.username && password === defaultDoctor.password) {
-      demoDoctors.set(defaultDoctor._id, defaultDoctor);
+    const defaultDoctor = username === 'doctor' ? await ensureDefaultDoctor() : null;
+    const defaultPasswordResult = defaultDoctor ? await verifyPatientPassword(password, defaultDoctor.password) : null;
+    if (defaultDoctor && defaultPasswordResult?.isValid) {
+      if (defaultPasswordResult.needsRehash) {
+        defaultDoctor.password = await hashPatientPassword(password);
+        demoDoctors.set(String(defaultDoctor._id), defaultDoctor);
+      }
       return res.status(200).json({
         message: 'Doctor login successful',
         doctorName: defaultDoctor.fullName,
@@ -240,6 +278,41 @@ router.post('/doctor-login', async (req, res) => {
     return res.status(401).json({ error: 'Doctor not found or invalid credentials' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/me', requirePatientSession, async (req, res) => {
+  const patientId = String(req.patientId);
+  try {
+    stopReplayForPatient(patientId);
+    if (mongoose.connection.readyState === 1) {
+      const patient = await Patient.findById(patientId).select('_id');
+      if (!patient) return res.status(404).json({ error: 'Patient account not found.' });
+      await DailyCheckIn.deleteMany({ patientId });
+      await Appointment.deleteMany({ patientId });
+      await CallSession.deleteMany({ patientId });
+      await Notification.deleteMany({ patientId });
+      await StressReading.deleteMany({ patientId });
+      await Questionnaire.deleteMany({ patientId });
+      await ChatMessage.deleteMany({ roomId: { $in: [`ai:${patientId}`, patientId] } });
+      await Patient.deleteOne({ _id: patientId });
+    } else {
+      if (!demoPatients.has(patientId)) return res.status(404).json({ error: 'Patient account not found.' });
+      demoPatients.delete(patientId);
+      demoCheckIns.delete(patientId);
+      demoStressReadings.delete(patientId);
+      demoQuestionnaires.delete(patientId);
+      demoChatMessages.delete(patientId);
+      for (const list of [demoAppointments, demoCallSessions, demoNotifications]) {
+        for (let index = list.length - 1; index >= 0; index -= 1) {
+          if (String(list[index].patientId) === patientId) list.splice(index, 1);
+        }
+      }
+    }
+    return res.status(200).json({ message: 'Your account and associated active records have been deleted.' });
+  } catch (error) {
+    console.error('Patient account deletion failed:', error.message);
+    return res.status(500).json({ error: 'Could not delete the patient account. Please try again.' });
   }
 });
 

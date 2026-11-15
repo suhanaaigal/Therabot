@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: mental-health-backend
+    name: therabot-backend
     runtime: node
     buildCommand: npm install
     startCommand: npm start
@@ -11,13 +11,15 @@ services:
         sync: false
       - key: AI_PROVIDER
         value: openai
+      - key: OPENAI_BASE_URL
+        value: https://api.groq.com/openai/v1
       - key: OPENAI_MODEL
-        value: openai/gpt-oss-20b
+        value: llama-3.1-8b-instant
       - key: OPENAI_API_KEY
         sync: false
 
   - type: web
-    name: mental-health-frontend
+    name: therabot-frontend
     runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
@@ -30,5 +32,5 @@ services:
       - key: VITE_API_URL
         fromService:
           type: web
-          name: mental-health-backend
+          name: therabot-backend
           property: host
