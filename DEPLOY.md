@@ -91,10 +91,11 @@ Raw WESAD data, trained artifacts, replay files, and generated per-subject metri
 
 ## 6. One-time production password migration
 
-To update the existing production doctor account and all existing patient accounts, open the backend service's Render Shell and run:
+If Render Shell is unavailable, temporarily add these two environment variables to the backend service and redeploy:
 
 ```sh
-MONGO_URI="$MONGO_URI" DOCTOR_PASSWORD="your-doctor-password" PATIENT_PASSWORD="your-patient-password" node backend/scripts/setProductionPasswords.js
+PASSWORD_MIGRATION_DOCTOR_PASSWORD="your-doctor-password"
+PASSWORD_MIGRATION_PATIENT_PASSWORD="your-patient-password"
 ```
 
-This script runs only when manually invoked and prints account counts, not passwords. Never commit these passwords or add them to frontend environment variables.
+The backend runs the migration during startup and logs account counts. Remove both variables immediately after the successful deploy, then redeploy once more. Never commit these passwords or add them to frontend environment variables. The manual script remains available at `backend/scripts/setProductionPasswords.js` if Render Shell becomes available.

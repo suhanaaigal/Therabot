@@ -3,24 +3,16 @@ const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
 const { hashPatientPassword } = require('../patientPassword');
 
-const requirePassword = (name, minimumLength) => {
-  const value = process.env[name];
+const validatePassword = (name, value, minimumLength) => {
   if (typeof value !== 'string' || value.length < minimumLength || value.length > 128) {
     throw new Error(`${name} must be between ${minimumLength} and 128 characters.`);
   }
   return value;
 };
 
-const run = async () => {
-  if (!process.env.MONGO_URI) {
-    throw new Error('MONGO_URI is required.');
-  }
-
-  const doctorPassword = requirePassword('DOCTOR_PASSWORD', 6);
-  const patientPassword = requirePassword('PATIENT_PASSWORD', 8);
-
-  await mongoose.connect(process.env.MONGO_URI);
-
+const migratePasswords = async ({ doctorPassword, patientPassword }) => {
+  validatePassword('DOCTOR_PASSWORD', doctorPassword, 6);
+  validatePassword('PATIENT_PASSWORD', patientPassword, 8);
   const doctorPasswordHash = await hashPatientPassword(doctorPassword);
   const patientPasswordHash = await hashPatientPassword(patientPassword);
   const doctorResult = await Doctor.updateOne(
@@ -36,15 +28,34 @@ const run = async () => {
     throw new Error('The production doctor account was not found.');
   }
 
-  console.log(`Updated doctor account: ${doctorResult.modifiedCount}`);
-  console.log(`Updated patient accounts: ${patientResult.modifiedCount}`);
+  return {
+    doctorCount: doctorResult.modifiedCount,
+    patientCount: patientResult.modifiedCount
+  };
 };
 
-run()
-  .catch(error => {
-    console.error(`Password migration failed: ${error.message}`);
+if (require.main === module) {
+  if (!process.env.MONGO_URI) {
+    console.error('Password migration failed: MONGO_URI is required.');
     process.exitCode = 1;
-  })
-  .finally(async () => {
-    await mongoose.disconnect();
-  });
+  } else {
+    mongoose.connect(process.env.MONGO_URI)
+      .then(() => migratePasswords({
+        doctorPassword: process.env.DOCTOR_PASSWORD,
+        patientPassword: process.env.PATIENT_PASSWORD
+      }))
+      .then(result => {
+        console.log(`Updated doctor account: ${result.doctorCount}`);
+        console.log(`Updated patient accounts: ${result.patientCount}`);
+      })
+      .catch(error => {
+        console.error(`Password migration failed: ${error.message}`);
+        process.exitCode = 1;
+      })
+      .finally(async () => {
+        await mongoose.disconnect();
+      });
+  }
+}
+
+module.exports = { migratePasswords };

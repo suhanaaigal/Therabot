@@ -31,6 +31,7 @@ const { verifyPatientSession } = require('./patientSession');
 const { verifyDoctorSession } = require('./doctorSession');
 const { createRateLimiter } = require('./middleware/rateLimit');
 const { hashPatientPassword } = require('./patientPassword');
+const { migratePasswords } = require('./scripts/setProductionPasswords');
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const app = express();
@@ -290,6 +291,13 @@ const startServer = async () => {
       await mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 10000 });
       console.log('MongoDB Connected Successfully');
       await migrateLegacyPatientAssignments();
+      if (process.env.PASSWORD_MIGRATION_DOCTOR_PASSWORD && process.env.PASSWORD_MIGRATION_PATIENT_PASSWORD) {
+        const result = await migratePasswords({
+          doctorPassword: process.env.PASSWORD_MIGRATION_DOCTOR_PASSWORD,
+          patientPassword: process.env.PASSWORD_MIGRATION_PATIENT_PASSWORD
+        });
+        console.log(`Password migration updated doctor: ${result.doctorCount}, patients: ${result.patientCount}. Remove PASSWORD_MIGRATION_* variables now.`);
+      }
     } else {
       mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 5000 })
         .then(async () => {
