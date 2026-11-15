@@ -88,3 +88,13 @@ Raw WESAD data, trained artifacts, replay files, and generated per-subject metri
   - `VITE_TURN_CREDENTIAL`
 - Use credentials from a TURN provider such as Metered or Twilio Network Traversal. Do not commit TURN credentials to Git.
 - Keep the Jitsi link as a fallback when a network blocks WebRTC or the configured relay is unavailable.
+
+## 6. One-time production password migration
+
+To update the existing production doctor account and all existing patient accounts, open the backend service's Render Shell and run:
+
+```sh
+MONGO_URI="$MONGO_URI" DOCTOR_PASSWORD="your-doctor-password" PATIENT_PASSWORD="your-patient-password" node backend/scripts/setProductionPasswords.js
+```
+
+This script runs only when manually invoked and prints account counts, not passwords. Never commit these passwords or add them to frontend environment variables.
