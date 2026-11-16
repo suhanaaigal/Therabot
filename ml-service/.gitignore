@@ -3,6 +3,11 @@ __pycache__/
 *.py[cod]
 data/
 models/
+!models/
+!models/stress_minilm/
+!models/stress_minilm/baseline.joblib
+!models/emotion_minilm/
+!models/emotion_minilm/baseline.joblib
 outputs/
 *.csv
 !evaluation/crisis_short_test_template.csv

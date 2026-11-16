@@ -1,5 +1,13 @@
 services:
   - type: web
+    name: therabot-ml
+    runtime: python
+    rootDir: ml-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+
+  - type: web
     name: therabot-backend
     runtime: node
     buildCommand: npm install
@@ -17,6 +25,11 @@ services:
         value: llama-3.1-8b-instant
       - key: OPENAI_API_KEY
         sync: false
+      - key: ML_URL
+        fromService:
+          type: web
+          name: therabot-ml
+          property: host
 
   - type: web
     name: therabot-frontend

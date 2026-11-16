@@ -11,7 +11,8 @@ const detectCrisisRegex = (text = '') => {
 };
 
 const analyzeTextWithMl = async text => {
-  const baseUrl = String(process.env.ML_URL || '').trim().replace(/\/+$/, '');
+  const configuredUrl = String(process.env.ML_URL || '').trim().replace(/\/+$/, '');
+  const baseUrl = configuredUrl && /^https?:\/\//i.test(configuredUrl) ? configuredUrl : configuredUrl ? `https://${configuredUrl}` : '';
   if (!baseUrl || !String(text || '').trim()) return { status: 'not_configured' };
 
   const controller = new AbortController();
