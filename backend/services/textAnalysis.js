@@ -1,5 +1,5 @@
 const crisisPatterns = [
-  /\b(?:kill myself|end(?:ing)? my life|suicid(?:e|al)|hurt myself|harm myself|self[- ]harm|thinking about (?:suicide|self[- ]harm)|don't want to live|do not want to live|wish i were dead|no reason to live|i may hurt myself|i am in immediate danger|i am unsafe|(?:i may be |i might be )?in danger from myself)\b/i,
+  /\b(?:kill myself|end(?:ing)? my life|suicid(?:e|al)|sucidal|sucide|hurt myself|harm myself|self[- ]harm|thinking about (?:suicide|self[- ]harm)|don't want to live|do not want to live|wish i were dead|no reason to live|i may hurt myself|i am in immediate danger|i am unsafe|(?:i may be |i might be )?in danger from myself)\b/i,
   /\b(?:marna chahta(?: hoon| hun)?|marna chahti(?: hoon| hun)?|jeena nahi chahta|jeena nahi chahti|khud ko (?:maar|nuksan)|apne aap ko (?:maar|nuksan))\b/i
 ];
 const negatedSelfHarmPattern = /\b(?:i(?:'m| am)?\s+)?(?:not going to|not gonna|will not|won't|do not intend to|don't intend to|do not plan to|don't plan to)\s+(?:ever\s+)?(?:hurt|harm|kill)\s+(?:myself|me)\b/i;

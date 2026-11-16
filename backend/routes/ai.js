@@ -176,7 +176,7 @@ const generateFallbackClinicalNote = (transcript = [], patientName = 'the patien
     ? `Combined consultation audio indicates: ${cleanedTranscriptText.replace(/^Consultation audio:\s*/i, '').slice(0, 500)}`
     : (patientMessages.slice(-2).join(' ') || cleanedTranscriptText).slice(0, 500);
   const doctorSummary = (doctorMessages.slice(-2).join(' ') || 'Supportive guidance was discussed during the consultation.').slice(0, 500);
-  const safetyFlag = /suicid|self[- ]harm|kill myself|hurt myself|unsafe/i.test(cleanedTranscriptText)
+  const safetyFlag = /suicid|sucidal|sucide|self[- ]harm|kill myself|hurt myself|unsafe/i.test(cleanedTranscriptText)
     ? 'Safety concern mentioned in transcript; immediate clinician review is required.'
     : 'No immediate safety concern was identified in the captured transcript.';
 

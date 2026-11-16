@@ -1,7 +1,12 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const express = require('express');
-const { analyzeTextWithMl } = require('./textAnalysis');
+const { analyzeTextWithMl, detectCrisisRegex } = require('./textAnalysis');
+
+test('recognizes common misspellings of suicidal language', () => {
+  assert.equal(detectCrisisRegex("I'm sucidal"), true);
+  assert.equal(detectCrisisRegex('I am suicidal'), true);
+});
 
 test('accepts stress and emotion inference while reporting missing crisis model', async () => {
   const previousUrl = process.env.ML_URL;
