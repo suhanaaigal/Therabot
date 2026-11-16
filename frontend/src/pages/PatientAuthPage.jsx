@@ -14,6 +14,13 @@ export default function PatientAuthPage() {
     password: ''
   });
   const [loading, setLoading] = useState(false);
+  const savePatientSession = response => {
+    localStorage.setItem('patientId', response.data.patientId || 'demo-patient-id');
+    localStorage.setItem('patientName', response.data.patientName || form.fullName);
+    if (response.data.patientSessionToken) {
+      localStorage.setItem('patientSessionToken', response.data.patientSessionToken);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -31,8 +38,7 @@ export default function PatientAuthPage() {
         };
 
         const res = await api.post('/api/auth/register-simple', payload);
-        localStorage.setItem('patientId', res.data.patientId || 'demo-patient-id');
-        localStorage.setItem('patientName', res.data.patientName || form.fullName);
+        savePatientSession(res);
         alert('Account created successfully!');
         navigate('/dashboard');
       } else {
@@ -41,8 +47,7 @@ export default function PatientAuthPage() {
           password: form.password
         });
 
-        localStorage.setItem('patientId', res.data.patientId || 'demo-patient-id');
-        localStorage.setItem('patientName', res.data.patientName || form.fullName);
+        savePatientSession(res);
         alert('Login successful!');
         navigate('/dashboard');
       }
