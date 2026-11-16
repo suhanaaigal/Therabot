@@ -12,6 +12,17 @@ const toBand = probability => {
 
 const elevateBand = (band, minimum) => BANDS[Math.max(BANDS.indexOf(band), BANDS.indexOf(minimum))];
 
+const textRuleBand = text => {
+  const normalized = String(text || '').toLowerCase();
+  const highSignals = ['overwhelmed', 'panic', 'hopeless', "can't cope", 'exhausted', 'terrible', 'awful', 'depressed', 'crying'];
+  const moderateSignals = ['stressed', 'anxious', 'anxiety', 'sad', 'upset', 'difficult', 'tired', 'angry', 'frustrated', 'nervous', 'worried', 'lonely'];
+  const highCount = highSignals.filter(signal => normalized.includes(signal)).length;
+  const moderateCount = moderateSignals.filter(signal => normalized.includes(signal)).length;
+  if (highCount >= 2 || moderateCount >= 3) return { band: 'Orange', reason: 'Your check-in includes several signs that extra support may be helpful.' };
+  if (highCount === 1 || moderateCount >= 1) return { band: 'Yellow', reason: 'Your check-in includes signs that it may be helpful to pause and seek support.' };
+  return { band: 'Green', reason: null };
+};
+
 const ruleBand = self => {
   const { sleepHours, selfMood, selfAnxiety } = self || {};
   if ((Number.isFinite(sleepHours) && sleepHours < 4) ||
@@ -37,17 +48,19 @@ const fuse = (ml, physiologyProbability, self = {}, questionnaire = {}) => {
   }
 
   if (!ml || ml.status !== 'available') {
-    const band = ruleBand(self);
-    const reasons = ['Text analysis was unavailable, so your self-ratings were used.'];
+    const textResult = textRuleBand(self.text);
+    const band = elevateBand(ruleBand(self), textResult.band);
+    const reasons = ['The text analysis service was unavailable, so transparent text cues and your self-ratings were used.'];
+    if (textResult.reason) reasons.push(textResult.reason);
     if (questionnaire.phq9 >= 15 || questionnaire.gad7 >= 15) {
       return {
         band: elevateBand(band, 'Orange'),
         probability: null,
         reasons: [...reasons, 'A recent screening score is 15 or higher; follow-up is recommended.'],
-        source: 'rules+screening'
+        source: `rules${textResult.reason ? '+text' : ''}+screening`
       };
     }
-    return { band, probability: null, reasons, source: 'rules' };
+    return { band, probability: null, reasons, source: `rules${textResult.reason ? '+text' : ''}` };
   }
 
   const reasons = [
@@ -73,4 +86,4 @@ const fuse = (ml, physiologyProbability, self = {}, questionnaire = {}) => {
   return { band, probability, reasons, source };
 };
 
-module.exports = { toBand, ruleBand, fuse };
+module.exports = { toBand, ruleBand, textRuleBand, fuse };

@@ -201,7 +201,7 @@ router.post('/checkin', requirePatientSession, async (req, res) => {
     const result = fuse(
       mlAnalysis.status === 'available' ? { ...mlAnalysis, crisisFlag: mlAnalysis.crisisFlag || crisis } : null,
       latestStress?.stressProb,
-      { sleepHours, selfMood: moodScore, selfAnxiety: anxietyLevel, crisis },
+      { sleepHours, selfMood: moodScore, selfAnxiety: anxietyLevel, crisis, text },
       questionnaireScores
     );
     const band = result.band;
