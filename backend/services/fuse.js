@@ -38,7 +38,7 @@ const fuse = (ml, physiologyProbability, self = {}, questionnaire = {}) => {
 
   if (!ml || ml.status !== 'available') {
     const band = ruleBand(self);
-    const reasons = ['Text analysis unavailable; used the self-rating rules.'];
+    const reasons = ['Text analysis was unavailable, so your self-ratings were used.'];
     if (questionnaire.phq9 >= 15 || questionnaire.gad7 >= 15) {
       return {
         band: elevateBand(band, 'Orange'),

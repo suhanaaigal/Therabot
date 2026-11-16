@@ -251,7 +251,7 @@ function CheckinForm({ form, setForm, onSubmit, message, resultBand, reasons = [
       </form>
       {message && (
         <div className="success-banner" role="status">
-          <div className="success-banner-heading"><strong>{resultBand ? 'Your check-in has been saved.' : message}</strong>{resultBand && <span className={`risk-badge ${resultBand.toLowerCase()}`}>{resultBand}</span>}</div>
+          <div className="success-banner-heading"><strong>{resultBand ? 'Your check-in has been saved.' : message}</strong>{resultBand && <span className="success-banner-status">Current status: <strong className={`risk-badge ${resultBand.toLowerCase()}`}>{resultBand}</strong></span>}</div>
           {resultBand && <p className="success-banner-note">This automated estimate is for decision support only and requires clinician review.</p>}
           {reasons.length > 0 && <ul>{reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
         </div>
