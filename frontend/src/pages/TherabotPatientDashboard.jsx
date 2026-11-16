@@ -249,7 +249,13 @@ function CheckinForm({ form, setForm, onSubmit, message, resultBand, reasons = [
         </details>
         <div className="form-actions"><button className="action-button" type="submit">Save check-in <span aria-hidden="true">→</span></button></div>
       </form>
-      {message && <div className="success-banner" role="status">{message}{resultBand && <> Current status: <strong>{resultBand}</strong>.</>}{reasons.length > 0 && <ul>{reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}</div>}
+      {message && (
+        <div className="success-banner" role="status">
+          <div className="success-banner-heading"><strong>{resultBand ? 'Your check-in has been saved.' : message}</strong>{resultBand && <span className={`risk-badge ${resultBand.toLowerCase()}`}>{resultBand}</span>}</div>
+          {resultBand && <p className="success-banner-note">This automated estimate is for decision support only and requires clinician review.</p>}
+          {reasons.length > 0 && <ul>{reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+        </div>
+      )}
       {resultBand === 'Red' && (
         <div className="alert-row critical" role="alert" style={{ marginTop: '12px' }}>
           <strong>Please reach out for immediate support.</strong>

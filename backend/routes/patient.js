@@ -242,7 +242,7 @@ router.post('/checkin', requirePatientSession, async (req, res) => {
     }
 
     res.status(200).json({
-      message: 'Check-in recorded. The automated estimate is decision support only and requires clinician review.',
+      message: 'Your check-in has been saved. The automated estimate is decision support only and requires clinician review.',
       band,
       reasons: result.reasons,
       source: result.source,

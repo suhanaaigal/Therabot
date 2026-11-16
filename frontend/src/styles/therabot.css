@@ -113,6 +113,10 @@ button { -webkit-tap-highlight-color: transparent; }
 .form-field textarea, .workspace-content textarea { min-height: 105px; resize: vertical; }
 .form-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 16px; }
 .success-banner { margin-top: 15px; padding: 12px 14px; border: 1px solid #c4e5ce; border-radius: 5px; background: #eff9f1; color: #315e3c; font-size: 12px; }
+.success-banner-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.success-banner-heading .risk-badge { flex: 0 0 auto; }
+.success-banner-note { margin: 7px 0 0; color: #55705c; font-size: 11px; line-height: 1.5; }
+.success-banner ul { margin: 8px 0 0; padding-left: 18px; color: #55705c; font-size: 11px; line-height: 1.5; }
 .screening-instructions { display: grid; gap: 5px; margin: 0 0 18px; padding: 14px 16px; border: 1px solid #dbeadf; border-left: 4px solid var(--forest); border-radius: 7px; background: #f5faf6; color: #4f6257; font-size: 11px; line-height: 1.55; }
 .screening-instructions strong { color: var(--forest-deep); font: 700 12px 'Manrope', sans-serif; }
 .screening-instructions p, .screening-instructions span { margin: 0; }
