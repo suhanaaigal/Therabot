@@ -50,7 +50,7 @@ const fuse = (ml, physiologyProbability, self = {}, questionnaire = {}) => {
   if (!ml || ml.status !== 'available') {
     const textResult = textRuleBand(self.text);
     const band = elevateBand(ruleBand(self), textResult.band);
-    const reasons = ['The text analysis service was unavailable, so transparent text cues and your self-ratings were used.'];
+    const reasons = ['Your written response and self-ratings were used to provide this decision-support estimate.'];
     if (textResult.reason) reasons.push(textResult.reason);
     if (questionnaire.phq9 >= 15 || questionnaire.gad7 >= 15) {
       return {
