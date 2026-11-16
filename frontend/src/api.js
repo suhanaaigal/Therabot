@@ -20,7 +20,7 @@ const isDoctorRequest = url => {
 api.interceptors.request.use(config => {
 	const doctorToken = localStorage.getItem('doctorSessionToken');
 	const patientToken = localStorage.getItem('patientSessionToken');
-	const sessionToken = isDoctorRequest(config.url) ? (doctorToken || patientToken) : (patientToken || doctorToken);
+	const sessionToken = isDoctorRequest(config.url) ? doctorToken : (patientToken || doctorToken);
 	if (sessionToken) config.headers.Authorization = `Bearer ${sessionToken}`;
 	return config;
 });

@@ -30,7 +30,8 @@ export default function DoctorDashboard() {
   const [reportMode, setReportMode] = useState(false);
 
   useEffect(() => {
-    const isAuthenticated = localStorage.getItem('isDoctorAuthenticated') === 'true';
+    const isAuthenticated = localStorage.getItem('isDoctorAuthenticated') === 'true' &&
+      Boolean(localStorage.getItem('doctorSessionToken'));
     if (!isAuthenticated) {
       navigate('/doctor');
       return;

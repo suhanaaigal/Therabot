@@ -46,7 +46,8 @@ export default function TherabotDoctorDashboard() {
   const navigation = baseNavigation.map(item => item.id === 'alerts' ? { ...item, count: unreviewedAlertCount } : item);
 
   useEffect(() => {
-    if (localStorage.getItem('isDoctorAuthenticated') !== 'true') {
+    if (localStorage.getItem('isDoctorAuthenticated') !== 'true' ||
+        !localStorage.getItem('doctorSessionToken')) {
       navigate('/doctor');
       return undefined;
     }

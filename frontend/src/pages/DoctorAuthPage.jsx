@@ -17,6 +17,7 @@ export default function DoctorAuthPage() {
       localStorage.setItem('doctorId', res.data.doctorId || '');
       localStorage.setItem('doctorName', res.data.doctorName || 'Doctor');
       localStorage.setItem('doctorUsername', res.data.username || form.username);
+      localStorage.setItem('doctorSessionToken', res.data.doctorSessionToken || '');
       localStorage.setItem('isDoctorAuthenticated', 'true');
       navigate('/doctor-dashboard');
     } catch (err) {
